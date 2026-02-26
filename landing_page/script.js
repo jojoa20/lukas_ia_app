@@ -107,3 +107,121 @@ document.querySelectorAll('.chip:not(.chip-muted)').forEach(chip => {
 
 console.log('%c 🐂 BULLFOLIO Robo-Advisor', 'color:#00D4FF;font-size:18px;font-weight:bold;');
 console.log('%c Powered by Markowitz + K-Means + yfinance', 'color:#00FF88;font-size:12px;');
+
+// --- HERO CANVAS SCROLL ANIMATION ---
+const canvas = document.getElementById("hero-canvas");
+if (canvas) {
+    const context = canvas.getContext("2d");
+    const frameCount = 191; // 191 frames extracted
+    const imgFolder = "public/assets/hero/frames/";
+    
+    // Resize canvas properly
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    
+    // We will preload images into this array
+    const images = [];
+    let imagesLoaded = 0;
+    
+    const currentFrame = index => `${imgFolder}frame_${index.toString().padStart(4, '0')}.png`;
+    
+    const preloadImages = () => {
+        for (let i = 1; i <= frameCount; i++) {
+            const img = new Image();
+            img.src = currentFrame(i);
+            img.onload = () => {
+                imagesLoaded++;
+                // Draw the first frame when loaded
+                if (i === 1) {
+                    renderFrame(1);
+                }
+            };
+            images.push(img);
+        }
+    };
+    
+    const renderFrame = (index) => {
+        if (!images[index - 1] || !images[index - 1].complete) return;
+        
+        const img = images[index - 1];
+        
+        // Calculate object-fit: cover equivalent
+        const canvasRatio = canvas.width / canvas.height;
+        const imgRatio = img.width / img.height;
+        
+        let drawWidth, drawHeight, offsetX, offsetY;
+        
+        if (canvasRatio > imgRatio) {
+            drawWidth = canvas.width;
+            drawHeight = canvas.width / imgRatio;
+            offsetX = 0;
+            offsetY = (canvas.height - drawHeight) / 2;
+        } else {
+            drawWidth = canvas.height * imgRatio;
+            drawHeight = canvas.height;
+            offsetX = (canvas.width - drawWidth) / 2;
+            offsetY = 0;
+        }
+        
+        // Context optimizations
+        context.imageSmoothingEnabled = true;
+        context.imageSmoothingQuality = 'high';
+        
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+    };
+    
+    // Start preloading
+    preloadImages();
+    
+    // Track Scroll Progress for the Hero Section
+    const heroSection = document.getElementById("hero");
+    let currentScrollFrame = 1;
+    let targetScrollFrame = 1;
+    let ticking = false;
+    
+    window.addEventListener("scroll", () => {
+        const scrollTop = window.scrollY;
+        
+        // Only run animation if we are within the hero section height (minus viewport height for the stickiness)
+        const maxScroll = heroSection.scrollHeight - window.innerHeight;
+        
+        if (scrollTop <= maxScroll && maxScroll > 0) {
+            const scrollFraction = Math.max(0, scrollTop) / maxScroll;
+            let frameIndex = Math.min(
+                frameCount,
+                Math.max(1, Math.ceil(scrollFraction * frameCount))
+            );
+            
+            targetScrollFrame = frameIndex;
+            
+            if (!ticking) {
+                window.requestAnimationFrame(smoothAnimation);
+                ticking = true;
+            }
+        }
+    });
+
+    // Smooth animation interpolator
+    const smoothAnimation = () => {
+        // Easing factor to prevent jitter, makes scrolling feel buttery
+        const diff = targetScrollFrame - currentScrollFrame;
+        
+        if (Math.abs(diff) > 0.1) {
+            currentScrollFrame += diff * 0.25; // Easing value
+            renderFrame(Math.round(currentScrollFrame));
+            window.requestAnimationFrame(smoothAnimation);
+        } else {
+            currentScrollFrame = targetScrollFrame;
+            renderFrame(targetScrollFrame);
+            ticking = false;
+        }
+    };
+    
+    // Handle Window Resize
+    window.addEventListener("resize", () => {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        renderFrame(Math.round(currentScrollFrame));
+    });
+}
