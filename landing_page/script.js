@@ -114,32 +114,25 @@ if (canvas) {
     const context = canvas.getContext("2d");
     const frameCount = 191; // 191 frames extracted
     const imgFolder = "public/assets/hero/frames/";
-    
-    // Get container for proper sizing
-    const visualContainer = document.querySelector('.hero-visual');
 
-    // Resize canvas properly
+    // The frames are expected to be 16:9 natively. We set a high-res base.
+    const baseWidth = 1920;
+    const baseHeight = 1080;
+
+    // Resize canvas properly (internal resolution)
     const resizeCanvas = () => {
-        if (!visualContainer) {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-            return;
-        }
-        
-        // Match the container's exact bounded dimensions
-        const rect = visualContainer.getBoundingClientRect();
-        canvas.width = rect.width;
-        canvas.height = rect.height;
+        canvas.width = baseWidth;
+        canvas.height = baseHeight;
     };
-    
+
     resizeCanvas();
-    
+
     // We will preload images into this array
     const images = [];
     let imagesLoaded = 0;
-    
+
     const currentFrame = index => `${imgFolder}frame_${index.toString().padStart(4, '0')}.png`;
-    
+
     const preloadImages = () => {
         for (let i = 1; i <= frameCount; i++) {
             const img = new Image();
@@ -154,62 +147,45 @@ if (canvas) {
             images.push(img);
         }
     };
-    
+
     const renderFrame = (index) => {
         if (!images[index - 1] || !images[index - 1].complete) return;
-        
+
         const img = images[index - 1];
-        
-        // Calculate object-fit: cover equivalent
-        const canvasRatio = canvas.width / canvas.height;
-        const imgRatio = img.width / img.height;
-        
-        let drawWidth, drawHeight, offsetX, offsetY;
-        
-        if (canvasRatio > imgRatio) {
-            drawWidth = canvas.width;
-            drawHeight = canvas.width / imgRatio;
-            offsetX = 0;
-            offsetY = (canvas.height - drawHeight) / 2;
-        } else {
-            drawWidth = canvas.height * imgRatio;
-            drawHeight = canvas.height;
-            offsetX = (canvas.width - drawWidth) / 2;
-            offsetY = 0;
-        }
-        
+
         // Context optimizations
         context.imageSmoothingEnabled = true;
         context.imageSmoothingQuality = 'high';
-        
+
         context.clearRect(0, 0, canvas.width, canvas.height);
-        context.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+        // Draw the image filling the 1920x1080 internal canvas. CSS handles the max-width: 1400px and aspect-ratio.
+        context.drawImage(img, 0, 0, canvas.width, canvas.height);
     };
-    
+
     // Start preloading
     preloadImages();
-    
+
     // Track Scroll Progress for the Hero Section
     const heroSection = document.getElementById("hero");
     let currentScrollFrame = 1;
     let targetScrollFrame = 1;
     let ticking = false;
-    
+
     window.addEventListener("scroll", () => {
         const scrollTop = window.scrollY;
-        
+
         // Only run animation if we are within the hero section height (minus viewport height for the stickiness)
         const maxScroll = heroSection.scrollHeight - window.innerHeight;
-        
+
         if (scrollTop <= maxScroll && maxScroll > 0) {
             const scrollFraction = Math.max(0, scrollTop) / maxScroll;
             let frameIndex = Math.min(
                 frameCount,
                 Math.max(1, Math.ceil(scrollFraction * frameCount))
             );
-            
+
             targetScrollFrame = frameIndex;
-            
+
             if (!ticking) {
                 window.requestAnimationFrame(smoothAnimation);
                 ticking = true;
@@ -221,7 +197,7 @@ if (canvas) {
     const smoothAnimation = () => {
         // Easing factor to prevent jitter, makes scrolling feel buttery
         const diff = targetScrollFrame - currentScrollFrame;
-        
+
         if (Math.abs(diff) > 0.1) {
             currentScrollFrame += diff * 0.25; // Easing value
             renderFrame(Math.round(currentScrollFrame));
@@ -232,7 +208,7 @@ if (canvas) {
             ticking = false;
         }
     };
-    
+
     // Handle Window Resize
     window.addEventListener("resize", () => {
         resizeCanvas();
