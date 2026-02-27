@@ -105,6 +105,134 @@ document.querySelectorAll('.chip:not(.chip-muted)').forEach(chip => {
     if (tickers[t]) chip.title = tickers[t];
 });
 
+// --- VERTICAL CRYPTO TICKER (BinANCE API) ---
+const tickerSymbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'ADAUSDT'];
+const tickerTrack = document.getElementById('crypto-ticker-track');
+
+async function fetchCryptoPrices() {
+    if (!tickerTrack) return;
+    try {
+        const symbolsParam = encodeURIComponent(JSON.stringify(tickerSymbols));
+        const url = `https://api.binance.com/api/v3/ticker/24hr?symbols=${symbolsParam}`;
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Network response was not ok');
+        const data = await response.json();
+
+        // Build HTML string for items
+        let itemsHtml = '';
+        data.forEach(coin => {
+            const sym = coin.symbol.replace('USDT', '');
+
+            // Format price: drop decimals for BTC, keep 2 for others, maybe 4 for ADA if needed but 2 is cleaner
+            let priceVal = parseFloat(coin.lastPrice);
+            const price = priceVal > 1000 ? priceVal.toLocaleString('en-US', { maximumFractionDigits: 0 }) : priceVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+
+            const changeVal = parseFloat(coin.priceChangePercent);
+            const changeClass = changeVal >= 0 ? 'positive' : 'negative';
+            const changeSign = changeVal > 0 ? '+' : '';
+            const changeText = `${changeSign}${changeVal.toFixed(2)}%`;
+
+            itemsHtml += `
+                <div class="crypto-ticker-item">
+                    <span class="ticker-symbol">${sym}</span>
+                    <span class="ticker-price">$${price}</span>
+                    <span class="ticker-change ${changeClass}">${changeText}</span>
+                </div>
+            `;
+        });
+
+        // Duplicate the list inside the track so the CSS infinite scroll loop is seamless
+        tickerTrack.innerHTML = itemsHtml + itemsHtml;
+
+    } catch (error) {
+        console.error("Error fetching crypto prices from Binance:", error);
+    }
+}
+
+// Fetch immediately, then every 10 seconds
+if (tickerTrack) {
+    fetchCryptoPrices();
+    setInterval(fetchCryptoPrices, 10000);
+}
+
+// --- HORIZONTAL MARKET TICKER (Crypto + Stocks) ---
+const tickerHTrack = document.getElementById('market-ticker-track');
+
+// Since free public stock APIs without CORS/Keys do not exist reliably for frontend,
+// we will fetch Crypto from Binance, and use realistic mock data for stocks that fluctuate slightly.
+const mockStocks = [
+    { symbol: 'SPY', basePrice: 512.85, change: 0.45 },
+    { symbol: 'QQQ', basePrice: 445.62, change: 0.82 },
+    { symbol: 'AAPL', basePrice: 172.44, change: -1.20 },
+    { symbol: 'MSFT', basePrice: 405.12, change: 1.55 },
+    { symbol: 'NVDA', basePrice: 875.38, change: 3.45 }
+];
+
+async function fetchHorizontalTickerData() {
+    if (!tickerHTrack) return;
+
+    let itemsHtml = '';
+
+    // 1. Fetch Crypto (BTC, ETH)
+    try {
+        const hCryptoSymbols = ['BTCUSDT', 'ETHUSDT'];
+        const url = `https://api.binance.com/api/v3/ticker/24hr?symbols=${encodeURIComponent(JSON.stringify(hCryptoSymbols))}`;
+        const response = await fetch(url);
+        if (response.ok) {
+            const data = await response.json();
+            data.forEach(coin => {
+                const sym = coin.symbol.replace('USDT', '');
+                let priceVal = parseFloat(coin.lastPrice);
+                const priceStr = priceVal > 1000 ? priceVal.toLocaleString('en-US', { maximumFractionDigits: 0 }) : priceVal.toLocaleString('en-US', { minimumFractionDigits: 2 });
+                const changeVal = parseFloat(coin.priceChangePercent);
+                const changeClass = changeVal >= 0 ? 'positive' : 'negative';
+                const changeSign = changeVal > 0 ? '+' : '';
+
+                itemsHtml += `
+                    <div class="ticker-h-item">
+                        <span class="sym">${sym}</span>
+                        <span class="price">$${priceStr}</span>
+                        <span class="chg ${changeClass}">${changeSign}${changeVal.toFixed(2)}%</span>
+                        <span class="sep">|</span>
+                    </div>
+                `;
+            });
+        }
+    } catch (err) {
+        console.warn("Could not fetch crypto for horizontal ticker", err);
+    }
+
+    // 2. Generate smooth stock fluctuations (Bloomberg style)
+    mockStocks.forEach(stock => {
+        // Add minimal realistic jitter
+        const jitter = (Math.random() - 0.5) * 0.1;
+        stock.change += jitter;
+        stock.basePrice = stock.basePrice * (1 + (jitter / 100)); // Price moves with change
+
+        const changeClass = stock.change >= 0 ? 'positive' : 'negative';
+        const changeSign = stock.change > 0 ? '+' : '';
+        const priceStr = stock.basePrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+        itemsHtml += `
+            <div class="ticker-h-item">
+                <span class="sym">${stock.symbol}</span>
+                <span class="price">$${priceStr}</span>
+                <span class="chg ${changeClass}">${changeSign}${stock.change.toFixed(2)}%</span>
+                <span class="sep">|</span>
+            </div>
+        `;
+    });
+
+    // Duplicate string heavily for a long seamless CSS infinite scroll loop
+    tickerHTrack.innerHTML = itemsHtml.repeat(4);
+}
+
+// Fetch horizontal immediately, then every 15 seconds
+if (tickerHTrack) {
+    fetchHorizontalTickerData();
+    setInterval(fetchHorizontalTickerData, 15000);
+}
+
 console.log('%c 🐂 BULLFOLIO Robo-Advisor', 'color:#00D4FF;font-size:18px;font-weight:bold;');
 console.log('%c Powered by Markowitz + K-Means + yfinance', 'color:#00FF88;font-size:12px;');
 
@@ -264,10 +392,27 @@ if (enginesCanvas) {
     let currentFrame = 0;
 
     function renderFrame(engineIdx, frameIdx) {
+        // Main full-screen background canvas
         ctx.clearRect(0, 0, enginesCanvas.width, enginesCanvas.height);
         const img = engines[engineIdx]?.frames[frameIdx];
         if (img && img.complete && img.naturalWidth > 0) {
             ctx.drawImage(img, 0, 0, enginesCanvas.width, enginesCanvas.height);
+
+            // Draw on the 3-column layout side canvases for the active engine
+            const leftId = `engine-anim-${engineIdx + 1}-left`;
+            const rightId = `engine-anim-${engineIdx + 1}-right`;
+
+            [leftId, rightId].forEach(id => {
+                const sideCanvas = document.getElementById(id);
+                if (sideCanvas) {
+                    const sideCtx = sideCanvas.getContext("2d");
+                    // Sync dimensions to the image source to prevent stretching
+                    sideCanvas.width = enginesCanvas.width;
+                    sideCanvas.height = enginesCanvas.height;
+                    sideCtx.clearRect(0, 0, sideCanvas.width, sideCanvas.height);
+                    sideCtx.drawImage(img, 0, 0, sideCanvas.width, sideCanvas.height);
+                }
+            });
         }
         currentEngine = engineIdx;
         currentFrame = frameIdx;
@@ -282,6 +427,16 @@ if (enginesCanvas) {
     ];
     const dots = document.querySelectorAll('.scrolly-dot');
     const header = document.querySelector('.scrolly-header');
+
+    // Dynamic Label
+    const dynamicLabel = document.getElementById('scrolly-dynamic-label');
+    const stepLabels = [
+        "01 · Perfilamiento",
+        "02 · Optimización",
+        "03 · Validación",
+        "04 · Gestión"
+    ];
+
     let activeStep = -1;
 
     function setStep(index) {
@@ -294,6 +449,11 @@ if (enginesCanvas) {
         // Update dots
         dots.forEach(d => d.classList.remove('active'));
         if (dots[index]) dots[index].classList.add('active');
+
+        // Update dynamic label
+        if (dynamicLabel && stepLabels[index]) {
+            dynamicLabel.textContent = stepLabels[index];
+        }
 
         activeStep = index;
     }

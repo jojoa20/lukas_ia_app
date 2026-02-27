@@ -39,18 +39,16 @@
     <section class="hero" id="hero">
         <div class="hero-canvas-container">
             <canvas id="hero-canvas" class="hero-canvas"></canvas>
-            <div class="hero-canvas-overlay"></div>
         </div>
 
         <div class="hero-sticky-content">
-            <div class="hero-grid"></div>
-            <div class="hero-particles">
-                <div class="particle p1"></div>
-                <div class="particle p2"></div>
-                <div class="particle p3"></div>
-                <div class="particle p4"></div>
-                <div class="particle p5"></div>
+            <!-- Bullfolio AI Visual Layer -->
+            <div class="hero-ai-layer">
+                <div class="ai-math-grid"></div>
+                <div class="ai-crosshairs"></div>
+                <div class="ai-data-scanner"></div>
             </div>
+
             <div class="container">
                 <div class="hero-content">
                     <span class="badge hero-badge"><span class="badge-dot"></span>IA + Finanzas Cuantitativas · Solo
@@ -88,7 +86,6 @@
                 </div>
                 <div class="hero-visual">
                     <div class="hero-image-wrapper">
-                        <img src="public/assets/bullfolio_logo.png" alt="BULLFOLIO" class="hero-logo-float">
                         <div class="float-tag tag-1">
                             <div class="float-tag-icon green"><svg width="18" height="18" viewBox="0 0 24 24"
                                     fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
@@ -128,6 +125,30 @@
         </div> <!-- Closing hero-sticky-content -->
     </section>
 
+    <!-- HORIZONTAL MARKET TICKER -->
+    <section class="market-ticker-horizontal">
+        <div class="ticker-h-wrapper">
+            <div class="ticker-h-track" id="market-ticker-track">
+                <!-- JS will inject duplicated rows here to create an infinite loop -->
+                <div class="ticker-h-item"><span>Cargando cotizaciones...</span></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- VERTICAL CRYPTO TICKER -->
+    <section class="crypto-ticker-section">
+        <div class="ticker-label">LIVE MARKET</div>
+        <div class="crypto-ticker-container">
+            <div class="crypto-ticker-track" id="crypto-ticker-track">
+                <!-- Javascript will inject items here -->
+                <div class="crypto-ticker-item"><span>Cargando...</span></div>
+            </div>
+            <div class="ticker-fade-top"></div>
+            <div class="ticker-fade-bottom"></div>
+        </div>
+        <div class="ticker-label align-right">24H CHG</div>
+    </section>
+
     <!-- TRUST BAR -->
     <section class="trust-bar reveal">
         <div class="container">
@@ -163,44 +184,75 @@
                 <div class="scrolly-infobar-gradient"></div>
                 <div class="scrolly-infobar-content">
                     <!-- Step indicator dots -->
-                    <div class="scrolly-steps">
-                        <button class="scrolly-dot active" data-step="0">01</button>
-                        <button class="scrolly-dot" data-step="1">02</button>
-                        <button class="scrolly-dot" data-step="2">03</button>
-                        <button class="scrolly-dot" data-step="3">04</button>
+                    <div class="scrolly-navigation-container">
+                        <div class="scrolly-steps">
+                            <button class="scrolly-dot active" data-step="0">01</button>
+                            <button class="scrolly-dot" data-step="1">02</button>
+                            <button class="scrolly-dot" data-step="2">03</button>
+                            <button class="scrolly-dot" data-step="3">04</button>
+                        </div>
+                        <div class="scrolly-nav-label" id="scrolly-dynamic-label">01 · Perfilamiento</div>
                     </div>
 
                     <!-- Info panels — only one visible at a time -->
                     <div class="scrolly-info active" id="scrolly-info-1">
-                        <div class="scrolly-info-label">01 · Perfilamiento</div>
-                        <h3>Perfilamiento con <span class="gradient-text">K-Means</span></h3>
-                        <p>Clustering Machine Learning sobre datos comportamentales reales. Perfil de riesgo empírico:
-                            conservador, moderado o agresivo.</p>
-                        <span class="scrolly-tag">Machine Learning · sklearn</span>
+                        <div class="scrolly-info-anim left-anim">
+                            <canvas class="engine-anim-canvas" id="engine-anim-1-left"></canvas>
+                        </div>
+                        <div class="scrolly-info-text">
+                            <h3>Perfilamiento con <span class="gradient-text">K-Means</span></h3>
+                            <p>Clustering Machine Learning sobre datos comportamentales reales. Perfil de riesgo
+                                empírico: conservador, moderado o agresivo.</p>
+                            <span class="scrolly-tag">Machine Learning · sklearn</span>
+                        </div>
+                        <div class="scrolly-info-anim right-anim">
+                            <canvas class="engine-anim-canvas" id="engine-anim-1-right"></canvas>
+                        </div>
                     </div>
 
                     <div class="scrolly-info" id="scrolly-info-2">
-                        <div class="scrolly-info-label">02 · Optimización</div>
-                        <h3>Frontera Eficiente de <span class="gradient-text">Markowitz</span></h3>
-                        <p>Optimización cuadrática maximizando el Ratio de Sharpe para tu nivel exacto de riesgo. Pesos
-                            calculados con scipy y numpy.</p>
-                        <span class="scrolly-tag">Matemáticas Puras · scipy</span>
+                        <div class="scrolly-info-anim left-anim">
+                            <canvas class="engine-anim-canvas" id="engine-anim-2-left"></canvas>
+                        </div>
+                        <div class="scrolly-info-text">
+                            <h3>Frontera Eficiente de <span class="gradient-text">Markowitz</span></h3>
+                            <p>Optimización cuadrática maximizando el Ratio de Sharpe para tu nivel exacto de riesgo.
+                                Pesos calculados con scipy y numpy.</p>
+                            <span class="scrolly-tag">Matemáticas Puras · scipy</span>
+                        </div>
+                        <div class="scrolly-info-anim right-anim">
+                            <canvas class="engine-anim-canvas" id="engine-anim-2-right"></canvas>
+                        </div>
                     </div>
 
                     <div class="scrolly-info" id="scrolly-info-3">
-                        <div class="scrolly-info-label">03 · Validación</div>
-                        <h3>VaR y Backtesting <span class="gradient-text">Histórico</span></h3>
-                        <p>5-10 años de datos diarios via yfinance para calcular el Value at Risk y simular cómo
-                            sobrevivió tu portafolio en crisis reales.</p>
-                        <span class="scrolly-tag">Validación · yfinance</span>
+                        <div class="scrolly-info-anim left-anim">
+                            <canvas class="engine-anim-canvas" id="engine-anim-3-left"></canvas>
+                        </div>
+                        <div class="scrolly-info-text">
+                            <h3>VaR y Backtesting <span class="gradient-text">Histórico</span></h3>
+                            <p>5-10 años de datos diarios via yfinance para calcular el Value at Risk y simular cómo
+                                sobrevivió tu portafolio en crisis reales.</p>
+                            <span class="scrolly-tag">Validación · yfinance</span>
+                        </div>
+                        <div class="scrolly-info-anim right-anim">
+                            <canvas class="engine-anim-canvas" id="engine-anim-3-right"></canvas>
+                        </div>
                     </div>
 
                     <div class="scrolly-info" id="scrolly-info-4">
-                        <div class="scrolly-info-label">04 · Gestión</div>
-                        <h3>Rebalanceo <span class="gradient-text">Inteligente</span></h3>
-                        <p>Sistema periódico que detecta desviaciones del portafolio objetivo y calcula los movimientos
-                            mínimos para mantener la estrategia ideal.</p>
-                        <span class="scrolly-tag">Gestión de Capital · numpy</span>
+                        <div class="scrolly-info-anim left-anim">
+                            <canvas class="engine-anim-canvas" id="engine-anim-4-left"></canvas>
+                        </div>
+                        <div class="scrolly-info-text">
+                            <h3>Rebalanceo <span class="gradient-text">Inteligente</span></h3>
+                            <p>Sistema periódico que detecta desviaciones del portafolio objetivo y calcula los
+                                movimientos mínimos para mantener la estrategia ideal.</p>
+                            <span class="scrolly-tag">Gestión de Capital · numpy</span>
+                        </div>
+                        <div class="scrolly-info-anim right-anim">
+                            <canvas class="engine-anim-canvas" id="engine-anim-4-right"></canvas>
+                        </div>
                     </div>
                 </div>
             </div>
