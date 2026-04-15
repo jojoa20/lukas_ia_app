@@ -4,9 +4,10 @@ import React from "react";
 
 interface MobileFinScoreProps {
   score: number;
+  loading?: boolean;
 }
 
-export default function MobileFinScore({ score }: MobileFinScoreProps) {
+export default function MobileFinScore({ score, loading = false }: MobileFinScoreProps) {
   const getScoreData = (currentScore: number) => {
     if (currentScore < 400) {
       return {
@@ -86,12 +87,18 @@ export default function MobileFinScore({ score }: MobileFinScoreProps) {
           <p className="text-[11px] uppercase tracking-wider text-white/70 mb-1">
             Finscore:
           </p>
-          <div className="flex justify-center items-end gap-2">
-            <span className="text-5xl font-black leading-none">{score}</span>
-            <span className={`text-sm font-bold mb-1 ${deltaColor}`}>
-              {delta}
-            </span>
-          </div>
+          {loading ? (
+            <div className="flex justify-center items-end gap-2">
+              <div className="w-24 h-12 bg-white/10 animate-pulse rounded-lg" />
+            </div>
+          ) : (
+            <div className="flex justify-center items-end gap-2">
+              <span className="text-5xl font-black leading-none">{score}</span>
+              <span className={`text-sm font-bold mb-1 ${deltaColor}`}>
+                {delta}
+              </span>
+            </div>
+          )}
         </div>
       </div>
       <p className="text-sm text-white/80 mt-2">

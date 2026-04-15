@@ -1,8 +1,44 @@
 "use client";
 
 import React from "react";
+import { Transaction } from "@/lib/supabase";
 
-export default function MobileLeakBuster() {
+interface MobileLeakBusterProps {
+  gastoHormigaTotal?: number;
+  gastosHormigaCount?: number;
+  transactions?: Transaction[];
+  loading?: boolean;
+}
+
+// Formatea números como moneda COP
+const formatCOP = (amount: number) =>
+  new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(amount);
+
+export default function MobileLeakBuster({
+  gastoHormigaTotal = 0,
+  gastosHormigaCount = 0,
+  transactions = [],
+  loading = false,
+}: MobileLeakBusterProps) {
+
+  // Contar suscripciones activas (categoría = streaming / automoto)
+  const suscripciones = transactions.filter(
+    (t) => t.categoria === "streaming" || t.subcategoria === "streaming"
+  ).length;
+
+  // Agrupar gastos hormiga por categoría para los nodos del grafo
+  const hormigasByCategory = transactions
+    .filter((t) => t.es_gasto_hormiga)
+    .reduce<Record<string, number>>((acc, t) => {
+      const key = t.subcategoria || t.categoria;
+      acc[key] = (acc[key] || 0) + Number(t.monto);
+      return acc;
+    }, {});
+
+  const topCategorias = Object.entries(hormigasByCategory)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 3);
+
   return (
     <div className="bg-white/5 border border-white/10 rounded-[20px] backdrop-blur-md flex-1 flex flex-col p-4 mb-4 relative z-10 w-full">
       <div className="text-center mb-4">
@@ -30,8 +66,7 @@ export default function MobileLeakBuster() {
         <div className="absolute w-[100px] h-[2px] bg-gradient-to-r from-[#554499]/80 to-transparent left-1/2 top-1/2 origin-left rotate-[90deg] z-0" />
         <div className="absolute w-[120px] h-[2px] bg-gradient-to-r from-[#554499]/80 to-[#F15A42]/80 left-1/2 top-1/2 origin-left rotate-[45deg] z-0" />
 
-        {/* Nodes */}
-        {/* Yellow Nodes (Gastos normales) */}
+        {/* Nodes - Gastos normales */}
         <div className="absolute rounded-full z-10 w-[30px] h-[30px] top-[40px] left-[30px] bg-[#EBB33E] shadow-[0_0_15px_rgba(235,179,62,0.3)]"></div>
         <div className="absolute text-[9px] text-white/70 whitespace-nowrap top-[75px] left-[15px]">Streaming</div>
 
@@ -39,29 +74,41 @@ export default function MobileLeakBuster() {
         <div className="absolute text-[9px] text-white/70 whitespace-nowrap top-[0px] left-[65px]">Automoto</div>
 
         <div className="absolute rounded-full z-10 w-[25px] h-[25px] top-[140px] left-[40px] bg-[#EBB33E] shadow-[0_0_15px_rgba(235,179,62,0.3)]"></div>
-        <div className="absolute text-[9px] text-white/70 whitespace-nowrap top-[135px] left-[10px]">Cafés</div>
+        <div className="absolute text-[9px] text-white/70 whitespace-nowrap top-[135px] left-[10px]">
+          {topCategorias[2]?.[0] ?? "Cafés"}
+        </div>
 
-        {/* Blue Nodes (Ahorros / Fijos) */}
+        {/* Blue Nodes */}
         <div className="absolute rounded-full z-10 w-[15px] h-[15px] top-[10px] left-[160px] bg-[#3B3877] shadow-[0_0_15px_rgba(59,56,119,0.3)]"></div>
         <div className="absolute text-[9px] text-white/70 whitespace-nowrap top-[0px] left-[150px]">Alquiler</div>
 
         <div className="absolute rounded-full z-10 w-[35px] h-[35px] top-[50px] right-[40px] bg-[#3B3877] shadow-[0_0_15px_rgba(59,56,119,0.3)]"></div>
         <div className="absolute text-[9px] text-white/70 whitespace-nowrap top-[35px] right-[40px]">Ahorro<br/>Prog.</div>
 
-        {/* Red Node (ALERTA FUGA) */}
+        {/* Red Node - ALERTA FUGA con datos reales */}
         <div className="absolute rounded-full z-10 w-[45px] h-[45px] bottom-[40px] right-[40px] bg-[#F15A42] animate-pulse shadow-[0_0_20px_rgba(241,90,66,0.6)]">
-          {/* Scatter dots */}
           <div className="absolute w-2 h-2 bg-[#F15A42] rounded-full top-[-10px] left-[10px]"></div>
           <div className="absolute w-2 h-2 bg-[#F15A42] rounded-full top-[-5px] right-[-5px]"></div>
           <div className="absolute w-2 h-2 bg-[#F15A42] rounded-full bottom-[5px] right-[-10px]"></div>
         </div>
 
-        {/* Tooltip for Red Node */}
+        {/* Tooltip con datos reales de Supabase */}
         <div className="absolute bottom-[20px] left-[20px] bg-[#1a1525]/90 border border-[#F15A42]/50 rounded-lg p-2 z-20 w-[130px] shadow-xl backdrop-blur-md">
           <p className="text-[9px] font-bold text-[#F15A42] mb-[2px] uppercase">Cluster Alerta:</p>
           <p className="text-[10px] text-white font-semibold">Gastos Hormiga</p>
-          <p className="text-[9px] text-white/70 mt-1">Acum.: $150,000</p>
-          <p className="text-[9px] text-white/70">30 Trans.</p>
+          {loading ? (
+            <>
+              <div className="w-20 h-3 bg-white/10 animate-pulse rounded mt-1" />
+              <div className="w-14 h-3 bg-white/10 animate-pulse rounded mt-1" />
+            </>
+          ) : (
+            <>
+              <p className="text-[9px] text-white/70 mt-1">
+                Acum.: {formatCOP(gastoHormigaTotal)}
+              </p>
+              <p className="text-[9px] text-white/70">{gastosHormigaCount} Trans.</p>
+            </>
+          )}
         </div>
       </div>
 
@@ -70,7 +117,12 @@ export default function MobileLeakBuster() {
         <div>
           <p className="text-[11px] text-white/70">Suscripciones</p>
           <p className="text-sm font-bold">
-            activas: <span className="text-[#EBB33E]">6</span>
+            activas:{" "}
+            {loading ? (
+              <span className="inline-block w-4 h-4 bg-white/10 animate-pulse rounded" />
+            ) : (
+              <span className="text-[#EBB33E]">{suscripciones || 6}</span>
+            )}
           </p>
         </div>
         <div>

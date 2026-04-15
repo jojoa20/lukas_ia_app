@@ -1,0 +1,3 @@
+module.exports=[55175,a=>{"use strict";var b=a.i(70645);function c({children:a}){return(0,b.jsx)("div",{className:"h-[100dvh] w-full bg-gradient-to-b from-[#1a2a5e] to-[#111827] flex flex-col overflow-hidden font-sans text-white",children:(0,b.jsx)("div",{className:"w-full h-full max-w-[600px] mx-auto flex flex-col relative shadow-[0_0_50px_rgba(0,0,0,0.5)] bg-gradient-to-b from-[#1a2a5e] to-[#111827]",children:a})})}a.s(["default",()=>c,"metadata",0,{title:"Lukas AI Chat",description:"Interfaz de chat nativa para Lukas AI"}])}];
+
+//# sourceMappingURL=LUKAS_APP_ENTREGA_src_app_chat_layout_tsx_1589bd87._.js.map
