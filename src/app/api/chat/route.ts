@@ -1,135 +1,28 @@
-import { openai, getOrCreateLukasAssistant } from '@/lib/openai/assistant';
-import { getFinscore, createMeta, addGastoHormiga } from '@/lib/supabase/actions';
-import { summarizeAndStoreThread, fetchRelevantMemories } from '@/lib/supabase/memory';
+import { streamText } from 'ai';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
 
-export const maxDuration = 60; // Set a longer execution time for Assistants
+const google = createGoogleGenerativeAI({
+  apiKey: process.env.GEMINI_API_KEY || ''
+});
+
+const SYSTEM_INSTRUCTION = "Eres Lukas, un robo-advisor financiero para la Gen Z en Colombia. Eres directo, usas jerga paisa (parce, nea, lucas). Tus respuestas son concisas (maximo 2 oraciones). Si el usuario reporta un gasto, analizalo financieramente.";
 
 export async function POST(req: Request) {
   try {
-    const input = await req.json();
-    const assistant = await getOrCreateLukasAssistant();
-    let threadId = input.threadId;
+    const { messages } = await req.json();
 
-    if (!threadId) {
-      const thread = await openai.beta.threads.create();
-      threadId = thread.id;
-    }
-
-    const messageContent: any[] = [{ type: 'text', text: input.message }];
-    
-    // Add OCR receipt image if uploaded
-    if (input.imageUrl) {
-      messageContent.push({
-        type: 'image_url',
-        image_url: { url: input.imageUrl },
-      });
-    }
-
-    // Add user message to thread
-    await openai.beta.threads.messages.create(threadId, {
-      role: 'user',
-      content: messageContent,
+    const result = await streamText({
+      model: google('gemini-1.5-flash'),
+      system: SYSTEM_INSTRUCTION,
+      messages,
     });
 
-    let extraInstructions = '';
-    if (!input.threadId) {
-      const historicalContext = await fetchRelevantMemories(input.message, 3);
-      if (historicalContext.length > 0) {
-        extraInstructions = `\n\nContexto Histórico del Usuario (Memoria a Largo Plazo): \n${historicalContext.join('\n')}\nTen en cuenta este contexto al responderle.`;
-      }
-    }
-
-    const encoder = new TextEncoder();
-    const stream = new ReadableStream({
-      async start(controller) {
-        const emitText = (text: string) => {
-          const payload = `0:${JSON.stringify(text)}\n`;
-          controller.enqueue(encoder.encode(payload));
-        };
-
-        const runStream = openai.beta.threads.runs.stream(threadId, {
-          assistant_id: assistant.id,
-          additional_instructions: extraInstructions ? extraInstructions : undefined
-        });
-
-        runStream.on('textDelta', (textDelta) => {
-          if (textDelta.value) {
-            emitText(textDelta.value);
-          }
-        });
-
-        runStream.on('event', async (event) => {
-          if (event.event === 'thread.run.requires_action') {
-            const requiredActions = event.data.required_action?.submit_tool_outputs.tool_calls || [];
-            const toolOutputs: any[] = [];
-
-            for (const toolCall of requiredActions) {
-              const args = JSON.parse(toolCall.function.arguments);
-              let result = '';
-
-              try {
-                if (toolCall.function.name === 'get_finscore') {
-                  const finscore = await getFinscore();
-                  result = JSON.stringify(finscore);
-                } else if (toolCall.function.name === 'create_meta') {
-                  const meta = await createMeta({ nombre: args.nombre, monto: args.montoObjetivo });
-                  result = JSON.stringify(meta);
-                } else if (toolCall.function.name === 'add_gasto_hormiga') {
-                  const gasto = await addGastoHormiga({ monto: args.monto, descripcion: args.descripcion || 'Gasto Hormiga' });
-                  result = JSON.stringify(gasto);
-                } else {
-                  result = 'Tool not found';
-                }
-              } catch (err: any) {
-                result = `Error executing tool: ${err.message}`;
-              }
-
-              toolOutputs.push({
-                tool_call_id: toolCall.id,
-                output: result,
-              });
-            }
-
-            const toolRunStream = openai.beta.threads.runs.submitToolOutputsStream(
-              event.data.id,
-              { thread_id: threadId, tool_outputs: toolOutputs }
-            );
-
-            toolRunStream.on('textDelta', (textDelta) => {
-              if (textDelta.value) emitText(textDelta.value);
-            });
-
-            await new Promise<void>((resolve) => {
-               toolRunStream.on('end', () => resolve());
-               toolRunStream.on('error', () => resolve());
-            });
-          }
-        });
-
-        runStream.on('end', async () => {
-          try {
-            await summarizeAndStoreThread(threadId);
-          } catch (e) {
-            console.error("Memory Storage Error", e);
-          }
-          controller.close();
-        });
-
-        runStream.on('error', (err) => {
-          console.error('RunStream Error:', err);
-          controller.error(err);
-        });
-      }
+    return result.toDataStreamResponse();
+  } catch (error) {
+    console.error('Gemini error:', error);
+    return new Response(JSON.stringify({ error: 'Error generating response' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
     });
-
-    return new Response(stream, {
-      headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
-        'Cache-Control': 'no-cache',
-      },
-    });
-
-  } catch (error: any) {
-    return new Response(JSON.stringify({ error: error.message }), { status: 500 });
   }
 }
