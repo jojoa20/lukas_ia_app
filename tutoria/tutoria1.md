@@ -11,31 +11,27 @@ Se implementó `@clerk/nextjs` para delegar el ingreso de la app sin armar la se
 - **Middleware:** El archivo `src/middleware.ts` bloquea tajantemente todo el dominio de `/app` y obliga al usuario a loguearse (redirigiéndolo hacia `/sign-in`). 
 - **Sign Out:** Se integró el componente oficial de `<UserButton />` dentro del avatar superior de la página de inicio (`HomeView.tsx`), al pulsarlo invoca el cierre de sesión real y vuelve a blindar la app.
 
-### 2. Bypass de Base de Datos para el Demo (Supabase)
-La app arrojaba múltiples errores `401 Unauthorized` bloqueando el Dashboard y el Historial porque nuestra base de datos (Supabase) tiene habilitadas Políticas de Seguridad RLS.
-- **Solución MVP:** En `src/lib/supabase/actions.ts` pusimos un puente temporal inyectando el `SERVICE_ROLE_KEY` del backend con un usuario estático (Dummy User). De esta forma el Frontend jala todos los datos inmediatamente logrando funcionar a la perfección en local sin necesidad de vincular los JWT de Clerk a los roles en Postgres manualmente.
-- *Nota Post-MVP (A futuro):* Para usuarios reales es obligatorio configurar el JWT Template en la consola web de Supabase para Clerk.
+### 2. Seguridad Blindada (Supabase + RLS + Clerk Sync)
+Se eliminó el bypass temporal y se profesionalizó la seguridad de los datos.
+- **Identidad Real:** Se eliminó el "Dummy User". Ahora el sistema utiliza la columna `clerk_id` en la tabla `profiles` para mapear cada sesión de Clerk con su registro correspondiente en Supabase de forma 100% segura.
+- **Políticas RLS:** Se configuraron políticas de Row Level Security (RLS) en Postgres. Ahora, incluso si alguien intercepta la API Key, los datos son inaccesibles a menos que el JWT del usuario coincida con el dueño de la fila (validado vía `auth.jwt() ->> 'sub'`).
+- **Middleware Protegido:** Todos los endpoints en `/api/` (Profile, Transactions, Metas) ahora requieren una sesión válida de Clerk y recuperan los datos específicos del usuario autenticado.
 
-### 3. Asesor Lukas IA (Chat en tiempo real via Gemini 1.5)
-- Se instalaron `@ai-sdk/google` y `@ai-sdk/react`.
-- La ruta en `src/app/api/chat/route.ts` ahora exporta streams directos.
-- Se refactorizó visualmente `ChatView.tsx` pasando del uso de `fetch()` manual a aprovechar el `useChat()` de Vercel. Esto entrega una experiencia nativa fluida, en la que el usuario lee letra a letra lo que Lukas opina, habilitando además auto-scroll y bloqueos mientras piensa el agente.
+### 3. Asesor Lukas IA con Superpoderes (Tool Calling)
+Lukas ya no solo chatea, ahora actúa sobre la base de datos real:
+- **Herramientas Activas:** Integración de `tools` en la API de chat. Lukas puede ejecutar `getFinscore` (consultar score real), `createMeta` (crear metas de ahorro) y `addGastoHormiga` (registrar transacciones de gasto innecesario) directamente desde la conversación.
+- **Streaming de Acciones:** El usuario ve en tiempo real cómo Lukas "piensa" y "actúa" afectando su tablero financiero.
 
-### 4. Vistas Parametrizadas: Metas e Historial Activos
-- **Metas:** El botón `Crear Nueva Meta` era condicional si estaba vacío el panel. Ahora vive fijo en la parte superior y despliega un Modal modal limpio para hacer `POST` directamente sin recargar.
-- **Historial:** Era imposible ver si el balance y flujo local reaccionaba porque no había un banco amarrado. Añadimos un Botón de Acción Flotante (FAB) que despliega una ventana de inyección manual de Gastos/Ingresos (se graban conectándose a `POST /api/transactions` en tiempo real).
+### 4. Dashboard Dinámico y Conexión de Datos
+- **FinScore en Tiempo Real:** El tablero principal ya no usa un valor estático de 885. Ahora realiza un `fetch` inicial a la API de perfil para mostrar el score real del usuario en la DB.
+- **Inyección de Transacciones:** El botón de micrófono y las interacciones manuales ahora realizan un `POST` real a la base de datos, logrando que el Historial y el FinScore reaccionen a la actividad del usuario.
 
 ---
 
-## 🚀 Cómo Arrancar el Proyecto para la Presentación
-Cualquier compañero del equipo que clone esta nueva rama y quiera probar el flujo, solo debe seguir estos pasos en orden:
+## 🚀 Cómo Arrancar el Proyecto (Fase Producción)
+1.  **Variables de Entorno:** Configurar `.env.local` con las llaves de Clerk, Supabase y Gemini.
+2.  **Base de Datos:** Asegurarse de tener la columna `clerk_id` en la tabla `profiles` y las políticas RLS activas (ver `/artifacts/rls_clerk_updated.sql`).
+3.  **Instalar:** `npm install`.
+4.  **Ejecutar:** `npm run dev`.
 
-1. Modificar el `.env.local` y asegurarse que tiene:
-   - Las 2 llaves públicas/privadas de `@Clerk`.
-   - La URL y la Anon/ServiceRole Key de `Supabase`.
-   - El token `GEMINI_API_KEY` sacado de Google AI Studio.
-2. Hacer `npm install` o `npm install --legacy-peer-deps` (para ignorar los deep conflicts de las variables de Next v14).
-3. Correr `npm run dev`.
-4. El App no dejará ver nada hasta que inicie sesión, entrar con cualquier cuenta google/clerk permitida.
-
-¡Y el MVP del robo-advisor financiero ya está de pie, completo!
+¡El MVP de Lukas AI ha sido estabilizado, blindado y está listo para producción!

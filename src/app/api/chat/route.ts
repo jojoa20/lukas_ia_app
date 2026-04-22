@@ -1,5 +1,7 @@
-import { streamText } from 'ai';
+import { streamText, tool } from 'ai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { z } from 'zod';
+import { getFinscore, createMeta, addGastoHormiga } from '@/lib/supabase/actions';
 
 const google = createGoogleGenerativeAI({
   apiKey: process.env.GEMINI_API_KEY || ''
@@ -15,6 +17,29 @@ export async function POST(req: Request) {
       model: google('gemini-1.5-flash'),
       system: SYSTEM_INSTRUCTION,
       messages,
+      tools: {
+        getFinscore: tool({
+          description: 'Obtiene el FinScore actual y en tiempo real del usuario autenticado en la base de datos.',
+          parameters: z.object({}),
+          execute: async () => await getFinscore(),
+        }),
+        createMeta: tool({
+          description: 'Crea una nueva meta de ahorro financiero para el usuario en la base de datos.',
+          parameters: z.object({
+            nombre: z.string().describe('El nombre de la meta de ahorro (ej: Viaje a la playa)'),
+            monto: z.number().describe('El monto en pesos colombianos objetivo para la meta')
+          }),
+          execute: async ({ nombre, monto }) => await createMeta({ nombre, monto }),
+        }),
+        addGastoHormiga: tool({
+          description: 'Registra un gasto hormiga (gasto pequeño innecesario) en la base de datos que afecta negativamente el FinScore del usuario.',
+          parameters: z.object({
+            monto: z.number().describe('Monto monetario del gasto en pesos colombianos'),
+            descripcion: z.string().describe('Qué fue lo que compró el usuario (ej: Café, snacks, uber, dulces)')
+          }),
+          execute: async ({ monto, descripcion }) => await addGastoHormiga({ monto, descripcion })
+        })
+      }
     });
 
     return result.toDataStreamResponse();

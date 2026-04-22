@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/actions';
+import { createClient, getAuthenticatedUser } from '@/lib/supabase/actions';
 
 // GET /api/metas
 // Alimenta: MetasView (lista de metas activas, cumplidas, abandonadas)
 // Query params: estado = 'activa' | 'cumplida' | 'abandonada' | 'all'
 export async function GET(req: Request) {
-  const supabase = await createClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-  if (authError || !user) {
+  let user, supabase;
+  try {
+    ({ supabase, user } = await getAuthenticatedUser());
+  } catch (authError) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -63,10 +63,10 @@ export async function GET(req: Request) {
 // Crea una nueva meta de ahorro.
 // Alimenta: MetasView (botón "Crear nueva meta"), ChatView (tool createMeta)
 export async function POST(req: Request) {
-  const supabase = await createClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-  if (authError || !user) {
+  let user, supabase;
+  try {
+    ({ supabase, user } = await getAuthenticatedUser());
+  } catch (authError) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

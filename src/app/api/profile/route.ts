@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/actions';
+import { createClient, getAuthenticatedUser } from '@/lib/supabase/actions';
 
 // GET /api/profile
 // Retorna el perfil completo del usuario autenticado.
 // Alimenta: HomeView (nombre), FinScoreDial (finscore), GamificationBanner (racha)
 export async function GET() {
-  const supabase = await createClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-  if (authError || !user) {
+  let user, supabase;
+  try {
+    ({ supabase, user } = await getAuthenticatedUser());
+  } catch (authError) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -42,10 +42,10 @@ export async function GET() {
 // PUT /api/profile
 // Actualiza datos del perfil (nombre, ingreso, avatar, etc.)
 export async function PUT(req: Request) {
-  const supabase = await createClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-  if (authError || !user) {
+  let user, supabase;
+  try {
+    ({ supabase, user } = await getAuthenticatedUser());
+  } catch (authError) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

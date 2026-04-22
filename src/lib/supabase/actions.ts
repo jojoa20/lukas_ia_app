@@ -23,19 +23,6 @@ export async function createClient() {
     }
   );
 
-  // MOCK de getUser para compatibilidad total con los 8 endpoints sin tocar su código.
-  // Resuelve el problema de JWT: toma cualquier usuario Clerk y lo mapea al usuario mock de la DB.
-  supabase.auth.getUser = async (): Promise<any> => {
-    if (userId) {
-      // Busca el primer ID de los profiles para evitar errores de Foreign Key o UUID
-      const { data } = await supabase.from('profiles').select('id').limit(1).single();
-      if (data) {
-         return { data: { user: { id: data.id } }, error: null };
-      }
-    }
-    return { data: { user: null }, error: new Error('Unauthorized') };
-  };
-
   return supabase;
 }
 
@@ -44,11 +31,24 @@ export async function createClient() {
 // Usar en todas las Server Actions que requieren autenticación.
 // ----------------------------------------------------------------------
 export async function getAuthenticatedUser() {
-  const supabase = await createClient()
-  const { data: { user }, error } = await supabase.auth.getUser()
+  const { userId } = await auth();
+  const supabase = await createClient();
+
+  if (!userId) {
+    throw new Error('Unauthorized');
+  }
+
+  // Buscamos el perfil real por el ID de Clerk
+  // NOTA: Asegúrate de añadir la columna 'clerk_id' en Supabase.
+  const { data: user, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('clerk_id', userId)
+    .single();
 
   if (error || !user) {
-    throw new Error('Unauthorized')
+    console.error('Error fetching profile:', error);
+    throw new Error('Profile not found for this Clerk ID');
   }
 
   return { supabase, user }
