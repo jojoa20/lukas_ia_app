@@ -29,7 +29,7 @@ export async function POST(req: Request) {
             nombre: z.string().describe('El nombre de la meta de ahorro (ej: Viaje a la playa)'),
             monto: z.number().describe('El monto en pesos colombianos objetivo para la meta')
           }),
-          execute: async ({ nombre, monto }) => await createMeta({ nombre, monto }),
+          execute: async ({ nombre, monto }: { nombre: string, monto: number }) => await createMeta({ nombre, monto }),
         }),
         addGastoHormiga: tool({
           description: 'Registra un gasto hormiga (gasto pequeño innecesario) en la base de datos que afecta negativamente el FinScore del usuario.',
@@ -37,7 +37,7 @@ export async function POST(req: Request) {
             monto: z.number().describe('Monto monetario del gasto en pesos colombianos'),
             descripcion: z.string().describe('Qué fue lo que compró el usuario (ej: Café, snacks, uber, dulces)')
           }),
-          execute: async ({ monto, descripcion }) => await addGastoHormiga({ monto, descripcion })
+          execute: async ({ monto, descripcion }: { monto: number, descripcion: string }) => await addGastoHormiga({ monto, descripcion })
         })
       }
     });
