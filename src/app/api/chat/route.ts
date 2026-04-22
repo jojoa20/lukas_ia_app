@@ -42,7 +42,7 @@ export async function POST(req: Request) {
       }
     });
 
-    return result.toDataStreamResponse();
+    return result.toTextStreamResponse();
   } catch (error) {
     console.error('Gemini error:', error);
     return new Response(JSON.stringify({ error: 'Error generating response' }), {

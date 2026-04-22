@@ -6,6 +6,7 @@ import { useChat } from "@ai-sdk/react";
 
 export default function ChatView() {
   const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
+    maxSteps: 5,
     initialMessages: [
       { id: '1', role: 'assistant', content: '¡Hola! Soy Lukas, tu pana financiero. ¿En qué te puedo ayudar hoy?' }
     ]
