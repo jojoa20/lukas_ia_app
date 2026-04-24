@@ -24,9 +24,9 @@ export async function POST(req: NextRequest) {
     const extracted = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
-        { 
-          role: 'system', 
-          content: 'Extrae transacción financiera (tipo:gasto/ingreso, monto:numero, categoria:string, descripcion:string) de este texto. Responde solo en JSON puro.' 
+        {
+          role: 'system',
+          content: 'Extrae transacción financiera (tipo:gasto/ingreso, monto:numero, categoria:string, descripcion:string) de este texto. Responde solo en JSON puro.'
         },
         { role: 'user', content: transcription.text }
       ],
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
 
     const data = JSON.parse(extracted.choices[0].message.content || '{}')
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       data,
       transcription: transcription.text,
       status: 'extracted'

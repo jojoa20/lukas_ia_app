@@ -1,5 +1,21 @@
 {
-  "node": {},
+  "node": {
+    "40c00b8b9dfd11cb4fc41551f7eb42dd69034b6763": {
+      "workers": {
+        "app/page": {
+          "moduleId": "[project]/LUKAS_APP_ENTREGA/.next-internal/server/app/page/actions.js { ACTIONS_MODULE0 => \"[project]/LUKAS_APP_ENTREGA/src/lib/supabase/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "addTransaction",
+          "filename": "LUKAS_APP_ENTREGA/src/lib/supabase/actions.ts"
+        }
+      },
+      "layer": {
+        "app/page": "action-browser"
+      },
+      "filename": "LUKAS_APP_ENTREGA/src/lib/supabase/actions.ts",
+      "exportedName": "addTransaction"
+    }
+  },
   "edge": {},
-  "encryptionKey": "Z2egRcOYKax0DZ1r5admNakyaF/sYshdmzEirSGoIvU="
+  "encryptionKey": "+htslfkDr72Dti220Rin3h7WB+7GggFv5W+oo8Z6vwE="
 }

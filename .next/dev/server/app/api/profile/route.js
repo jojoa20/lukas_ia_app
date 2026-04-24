@@ -1,0 +1,11 @@
+var R=require("../../../chunks/[turbopack]_runtime.js")("server/app/api/profile/route.js")
+R.c("server/chunks/7c1a7_next_757e89e9._.js")
+R.c("server/chunks/node_modules_@opentelemetry_api_build_esm_7e8f41ca._.js")
+R.c("server/chunks/7c1a7_@supabase_postgrest-js_dist_index_mjs_747b96ff._.js")
+R.c("server/chunks/7c1a7_@supabase_auth-js_dist_module_889179be._.js")
+R.c("server/chunks/7c1a7_zod_v4_af2e2dd8._.js")
+R.c("server/chunks/7c1a7_f9187d36._.js")
+R.c("server/chunks/[root-of-the-server]__edd21da0._.js")
+R.c("server/chunks/LUKAS_APP_ENTREGA__next-internal_server_app_api_profile_route_actions_885e000a.js")
+R.m("[project]/LUKAS_APP_ENTREGA/node_modules/next/dist/esm/build/templates/app-route.js { INNER_APP_ROUTE => \"[project]/LUKAS_APP_ENTREGA/src/app/api/profile/route.ts [app-route] (ecmascript)\" } [app-route] (ecmascript)")
+module.exports=R.m("[project]/LUKAS_APP_ENTREGA/node_modules/next/dist/esm/build/templates/app-route.js { INNER_APP_ROUTE => \"[project]/LUKAS_APP_ENTREGA/src/app/api/profile/route.ts [app-route] (ecmascript)\" } [app-route] (ecmascript)").exports

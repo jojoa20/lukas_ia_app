@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import Link from "next/link";
 
 interface SplashScreenProps {
   onFinishLoading: () => void;
@@ -11,8 +12,8 @@ export default function SplashScreen({ onFinishLoading }: SplashScreenProps) {
   useEffect(() => {
     const timer = setTimeout(() => {
       setIsVisible(false);
-      setTimeout(onFinishLoading, 800); // give time for fade out
-    }, 3000);
+      setTimeout(onFinishLoading, 800); 
+    }, 5000); // 5 seconds to give time to see the login button
     return () => clearTimeout(timer);
   }, [onFinishLoading]);
 
@@ -116,10 +117,25 @@ export default function SplashScreen({ onFinishLoading }: SplashScreenProps) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.8, delay: 1.2 }}
-            className="text-white/60 text-sm mt-2 tracking-widest uppercase font-medium"
+            className="text-white/40 text-[10px] mt-2 tracking-[0.2em] uppercase font-bold italic"
           >
-            Iniciando
+            Iniciando Experiencia...
           </motion.p>
+
+          {/* Small Login Button (The user wanted it "pequeño") */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 2.0 }}
+            className="absolute bottom-10"
+          >
+            <Link 
+              href="/login"
+              className="px-4 py-2 rounded-full bg-white/5 border border-white/10 text-white/50 text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 hover:text-white transition-all backdrop-blur-md"
+            >
+              Iniciar Sesión
+            </Link>
+          </motion.div>
         </motion.div>
       )}
     </AnimatePresence>

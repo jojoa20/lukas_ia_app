@@ -33,43 +33,46 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-[#111] border border-[#222] rounded-2xl p-8 shadow-2xl relative overflow-hidden">
-        {/* Glow effect */}
-        <div className="absolute -top-24 -left-24 w-48 h-48 bg-cyan-500/20 blur-[100px]" />
-        <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-purple-500/20 blur-[100px]" />
+    <div className="min-h-screen bg-[#050505] flex items-center justify-center p-6 font-sans">
+      <div className="w-full max-w-[340px] bg-[#111] border border-white/5 rounded-[32px] p-8 shadow-2xl relative overflow-hidden backdrop-blur-xl">
+        {/* Subtle Glows */}
+        <div className="absolute -top-24 -left-24 w-48 h-48 bg-[#D8A93F]/10 blur-[80px]" />
+        <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-[#F36E53]/10 blur-[80px]" />
 
-        <div className="relative z-10 text-center mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2 tracking-tight">Bienvenido a <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400">Lukas</span></h1>
-          <p className="text-gray-400">Tu asistente financiero inteligente</p>
+        <div className="relative z-10 text-center mb-10">
+          <div className="w-12 h-12 bg-gradient-to-br from-[#D8A93F] to-[#8A6B29] rounded-2xl mx-auto mb-4 flex items-center justify-center shadow-lg shadow-[#D8A93F]/20">
+            <span className="text-white text-xl font-black">L</span>
+          </div>
+          <h1 className="text-2xl font-black text-white mb-1 tracking-tighter italic">Lukas AI</h1>
+          <p className="text-white/30 text-[9px] font-bold uppercase tracking-[0.2em]">Inicia sesión, Pana</p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-6 relative z-10">
+        <form onSubmit={handleLogin} className="space-y-4 relative z-10">
           {error && (
-            <div className="bg-red-500/10 border border-red-500/50 text-red-500 p-3 rounded-lg text-sm text-center">
+            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-red-500/10 border border-red-500/30 text-red-500 p-3 rounded-2xl text-[10px] font-bold text-center uppercase tracking-wider">
               {error}
-            </div>
+            </motion.div>
           )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-400 mb-2">Email</label>
+          <div className="space-y-1.5">
+            <label className="block text-[9px] font-black text-white/20 uppercase tracking-[0.15em] ml-1">Email</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-[#1a1a1a] border border-[#333] rounded-xl px-4 py-3 text-white focus:outline-none focus:border-cyan-500 transition-colors"
+              className="w-full bg-white/[0.03] border border-white/5 rounded-2xl px-4 py-3 text-white text-xs focus:outline-none focus:border-[#D8A93F]/50 transition-all placeholder:text-white/10"
               placeholder="tu@email.com"
               required
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-400 mb-2">Contraseña</label>
+          <div className="space-y-1.5">
+            <label className="block text-[9px] font-black text-white/20 uppercase tracking-[0.15em] ml-1">Contraseña</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-[#1a1a1a] border border-[#333] rounded-xl px-4 py-3 text-white focus:outline-none focus:border-cyan-500 transition-colors"
+              className="w-full bg-white/[0.03] border border-white/5 rounded-2xl px-4 py-3 text-white text-xs focus:outline-none focus:border-[#D8A93F]/50 transition-all placeholder:text-white/10"
               placeholder="••••••••"
               required
             />
@@ -78,16 +81,15 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-gradient-to-r from-cyan-500 to-purple-600 text-white font-bold py-3 rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50"
+            className="w-full bg-white text-black font-black py-4 rounded-2xl hover:bg-[#D8A93F] transition-all disabled:opacity-30 text-[10px] uppercase tracking-[0.2em] shadow-xl mt-4 active:scale-95"
           >
-            {loading ? 'Entrando...' : 'Iniciar Sesión'}
+            {loading ? 'Entrando...' : 'Entrar'}
           </button>
         </form>
 
-        <div className="mt-8 text-center text-gray-500 text-sm relative z-10">
-          ¿No tienes cuenta?{' '}
-          <Link href="/signup" className="text-cyan-400 hover:underline">
-            Regístrate aquí
+        <div className="mt-8 text-center relative z-10">
+          <Link href="/signup" className="text-white/30 text-[9px] font-bold uppercase tracking-widest hover:text-white transition-colors">
+            ¿No tienes cuenta? <span className="text-[#D8A93F]">Regístrate</span>
           </Link>
         </div>
       </div>

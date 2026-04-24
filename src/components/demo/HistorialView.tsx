@@ -1,141 +1,184 @@
-import React, { useState } from "react";
+﻿import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 
+interface Transaction {
+  id: string;
+  tipo: 'ingreso' | 'gasto';
+  monto: number;
+  categoria: string;
+  descripcion: string;
+  fecha_transaccion: string;
+  es_gasto_hormiga: boolean;
+}
+
 export default function HistorialView() {
-  const [activeFilter, setActiveFilter] = useState("Todos");
-  const filters = ["Todos", "Ingresos", "Gastos", "🚨 Hormiga"];
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  
+  // Form state
+  const [monto, setMonto] = useState("");
+  const [tipo, setTipo] = useState<'ingreso' | 'gasto'>('gasto');
+  const [categoria, setCategoria] = useState("");
+  const [descripcion, setDescripcion] = useState("");
+
+  useEffect(() => {
+    fetch('/api/transactions')
+      .then(res => res.json())
+      .then(json => {
+        if (json.data) setTransactions(json.data);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const handleSaveTransaction = async () => {
+    if (!monto || !categoria || !descripcion) return;
+    
+    setLoading(true);
+    const payload = {
+      monto: Number(monto),
+      tipo,
+      categoria,
+      descripcion
+    };
+    
+    try {
+      const res = await fetch('/api/transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        const json = await res.json();
+        // Aseguramos que la transacci├│n se agrega al tope visual
+        setTransactions(prev => [json.data, ...prev]);
+        setShowModal(false);
+        setMonto("");
+        setCategoria("");
+        setDescripcion("");
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <motion.div 
-      initial={{ opacity: 0, x: -20 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      transition={{ duration: 0.4 }}
-      className="flex flex-col h-full pt-5 px-4 relative"
-    >
-      <motion.h1 
-        initial={{ y: -20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.1, type: "spring", stiffness: 100 }}
-        className="text-white font-bold text-[28px] mb-4 tracking-tight drop-shadow-md"
-      >
-        Tus Movimientos 📋
-      </motion.h1>
-
-      {/* Filtros (Chips) */}
-      <div className="flex gap-2 overflow-x-auto no-scrollbar pb-4 -mx-1 px-1">
-        {filters.map((f, i) => {
-          const isHormiga = f === "🚨 Hormiga";
-          const isActive = f === activeFilter;
-          return (
-            <motion.button
-              key={i}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => setActiveFilter(f)}
-              className={`whitespace-nowrap px-4 py-2 rounded-full text-xs font-bold transition-colors border shadow-sm ${
-                isHormiga 
-                  ? isActive 
-                    ? "bg-[#F36E53] border-[#F36E53] text-[#111827] shadow-[0_0_15px_rgba(243,110,83,0.4)]"
-                    : "bg-[#F36E53]/10 border-[#F36E53]/30 text-[#F36E53]"
-                  : isActive
-                    ? "bg-[#D8A93F] border-[#D8A93F] text-[#111827] shadow-[0_0_15px_rgba(216,169,63,0.4)]"
-                    : "bg-white/5 border-white/10 text-white hover:bg-white/10"
-              }`}
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-4 mb-24 min-h-screen relative">
+      <h1 className="text-2xl font-bold mb-6 text-[#D8A93F]">Mi Actividad</h1>
+      
+      {loading && transactions.length === 0 ? (
+        <div className="space-y-3 animate-pulse">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="h-16 bg-white/5 rounded-2xl" />
+          ))}
+        </div>
+      ) : transactions.length > 0 ? (
+        <div className="space-y-3">
+          {transactions.map(tx => (
+            <motion.div 
+              key={tx.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-white/5 p-4 rounded-2xl flex justify-between items-center border border-white/5"
             >
-              {f}
-            </motion.button>
-          );
-        })}
-      </div>
-
-      {/* Lista Agrupada */}
-      <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col gap-6 mt-2">
-        
-        {/* Sección: Hoy */}
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-        >
-          <h3 className="text-[#397DC1] text-[10px] uppercase font-black tracking-widest mb-3 pl-1 drop-shadow-[0_0_8px_rgba(57,125,193,0.3)]">Hoy</h3>
-          <div className="flex flex-col gap-3">
-            {/* Movimiento 1: Tinto */}
-            <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-4 flex items-center justify-between shadow-sm hover:bg-white/10 transition-colors">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl bg-gradient-to-tr from-[#111827] to-[#F36E53]/20 border border-[#F36E53]/30 shadow-inner">
-                  ☕
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${tx.tipo === 'ingreso' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                  {tx.tipo === 'ingreso' ? 'Ôåô' : 'Ôåæ'}
                 </div>
                 <div>
-                  <h4 className="text-white font-bold text-sm">Tinto (Panadería)</h4>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <p className="text-white/50 text-[11px]"><span className="text-[#397DC1] font-bold">Hoy</span>, 09:15 • Cafetería</p>
-                    <span className="bg-[#F36E53]/20 text-[#F36E53] text-[8px] font-black uppercase px-2 py-0.5 rounded-full border border-[#F36E53]">
-                      Hormiga
-                    </span>
-                  </div>
+                  <h4 className="font-bold text-sm">{tx.descripcion || tx.categoria}</h4>
+                  <p className="text-[10px] opacity-40 uppercase tracking-wider">{new Date(tx.fecha_transaccion).toLocaleDateString()}</p>
                 </div>
               </div>
-              <span className="font-black tracking-tight text-[#F36E53] text-[15px] drop-shadow-[0_0_8px_rgba(243,110,83,0.3)]">-$4.500</span>
+              <div className="text-right">
+                <span className={`font-bold ${tx.tipo === 'ingreso' ? 'text-green-400' : 'text-white'}`}>
+                  {tx.tipo === 'ingreso' ? '+' : '-'}${tx.monto.toLocaleString()}
+                </span>
+                {tx.es_gasto_hormiga && (
+                  <p className="text-[9px] text-[#D8A93F] font-semibold">Gasto Hormiga ­ƒÉ£</p>
+                )}
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-20 bg-white/5 rounded-3xl border border-dashed border-white/10">
+          <p className="opacity-50 text-sm">No hay movimientos registrados.</p>
+        </div>
+      )}
+
+      {/* Bot├│n Flotante */}
+      <button 
+        onClick={() => setShowModal(true)}
+        className="fixed bottom-24 right-6 w-14 h-14 bg-[#D8A93F] rounded-full flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-transform"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="black" className="w-6 h-6">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+        </svg>
+      </button>
+
+      {/* Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-[#111827] p-6 rounded-3xl w-full max-w-sm border border-white/10 space-y-4">
+            <h2 className="text-xl font-bold text-white mb-2">Registrar Movimiento</h2>
+            
+            <div className="flex gap-2 mb-4 p-1 bg-white/5 rounded-lg">
+              <button 
+                onClick={() => setTipo('gasto')}
+                className={`flex-1 py-2 text-sm font-bold rounded-md ${tipo === 'gasto' ? 'bg-red-500/20 text-red-400' : 'text-white/50'}`}
+              >
+                Gasto
+              </button>
+              <button 
+                onClick={() => setTipo('ingreso')}
+                className={`flex-1 py-2 text-sm font-bold rounded-md ${tipo === 'ingreso' ? 'bg-green-500/20 text-green-400' : 'text-white/50'}`}
+              >
+                Ingreso
+              </button>
             </div>
 
-            {/* Movimiento 2: Corral */}
-            <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-4 flex items-center justify-between shadow-sm hover:bg-white/10 transition-colors">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl bg-gradient-to-tr from-[#111827] to-[#F36E53]/20 border border-[#F36E53]/30 shadow-inner">
-                  🍔
-                </div>
-                <div>
-                  <h4 className="text-white font-bold text-sm">El Corral</h4>
-                  <p className="text-white/50 text-[11px]"><span className="text-[#397DC1] font-bold">Hoy</span>, 13:45 • Restaurante</p>
-                </div>
-              </div>
-              <span className="font-black tracking-tight text-[#F36E53] text-[15px] drop-shadow-[0_0_8px_rgba(243,110,83,0.3)]">-$35.000</span>
+            <input 
+              type="number"
+              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white text-lg font-bold" 
+              placeholder="$ Monto" 
+              value={monto} 
+              onChange={e => setMonto(e.target.value)} 
+            />
+            <input 
+              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white" 
+              placeholder="Categor├¡a (Ej. Comida, Transporte)" 
+              value={categoria} 
+              onChange={e => setCategoria(e.target.value)} 
+            />
+            <input 
+              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white" 
+              placeholder="Descripci├│n opcional" 
+              value={descripcion} 
+              onChange={e => setDescripcion(e.target.value)} 
+            />
+            
+            <div className="flex gap-3 justify-end mt-6">
+              <button 
+                onClick={() => setShowModal(false)}
+                className="px-4 py-3 text-white/50 font-semibold"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={handleSaveTransaction}
+                disabled={loading || !monto || !categoria}
+                className="bg-[#D8A93F] text-black px-6 py-3 rounded-xl font-bold flex-1 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {loading ? <span className="animate-spin text-xl">Ôå╗</span> : "Guardar"}
+              </button>
             </div>
           </div>
-        </motion.div>
-
-        {/* Sección: Ayer */}
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-        >
-          <h3 className="text-[#397DC1] text-[10px] uppercase font-black tracking-widest mb-3 pl-1 drop-shadow-[0_0_8px_rgba(57,125,193,0.3)]">Ayer</h3>
-          <div className="flex flex-col gap-3">
-            {/* Movimiento 3: Ingreso Nequi */}
-            <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-4 flex items-center justify-between shadow-sm hover:bg-white/10 transition-colors">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl bg-gradient-to-tr from-[#111827] to-[#D8A93F]/20 border border-[#D8A93F]/30 shadow-inner">
-                  💸
-                </div>
-                <div>
-                  <h4 className="text-white font-bold text-sm">Nequi (De: Sofía)</h4>
-                  <p className="text-white/50 text-[11px]"><span className="text-[#397DC1] font-bold">Ayer</span>, 18:20 • Transferencia</p>
-                </div>
-              </div>
-              <span className="font-black tracking-tighter text-green-400 text-[15px] drop-shadow-[0_0_8px_rgba(72,229,146,0.3)]">+$50.000</span>
-            </div>
-
-            {/* Movimiento 2: Streaming */}
-            <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-4 flex items-center justify-between shadow-sm hover:bg-white/10 transition-colors">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl bg-gradient-to-tr from-[#111827] to-[#397DC1]/20 border border-[#397DC1]/30 shadow-inner">
-                  📺
-                </div>
-                <div>
-                  <h4 className="text-white font-bold text-sm">Streaming Premium</h4>
-                  <p className="text-white/50 text-[11px]"><span className="text-[#397DC1] font-bold">Ayer</span>, 10:05 • Suscripción</p>
-                </div>
-              </div>
-              <span className="font-black tracking-tight text-[#F36E53] text-[15px] drop-shadow-[0_0_8px_rgba(243,110,83,0.3)]">-$45.000</span>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Spacer for bottom nav visibility */}
-        <div className="h-32 shrink-0 w-full" />
-      </div>
+        </div>
+      )}
     </motion.div>
   );
 }

@@ -28,9 +28,9 @@ Transacciones recientes: ${JSON.stringify(recentTx)}
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
-        { 
-          role: 'system', 
-          content: 'Eres Lukas, el asistente financiero inteligente. Tu personalidad es paisa, amable, sabio y motivador. Responde preguntas del usuario sobre sus finanzas basándote en su contexto.' 
+        {
+          role: 'system',
+          content: 'Eres Lukas, el asistente financiero inteligente. Tu personalidad es paisa, amable, sabio y motivador. Responde preguntas del usuario sobre sus finanzas basándote en su contexto.'
         },
         ...messages.map((m: any) => ({
           role: m.role,

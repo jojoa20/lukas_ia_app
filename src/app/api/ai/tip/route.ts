@@ -30,13 +30,13 @@ export async function GET() {
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
-        { 
-          role: 'system', 
-          content: 'Eres Lukas, un coach financiero paisa (Medellín, Colombia). Tu estilo es directo, motivador, con humor y mucho acento paisa (usa términos como "parcero", "pues", "zona", "chimba", "camellar"). Responde en máximo 3 líneas. Da un consejo financiero basado en el contexto del usuario.' 
+        {
+          role: 'system',
+          content: 'Eres Lukas, un coach financiero paisa (Medellín, Colombia). Tu estilo es directo, motivador, con humor y mucho acento paisa (usa términos como "parcero", "pues", "zona", "chimba", "camellar"). Responde en máximo 3 líneas. Da un consejo financiero basado en el contexto del usuario.'
         },
-        { 
-          role: 'user', 
-          content: `Mi contexto: FinScore ${profile.data?.finscore_actual || 500}. Tengo ${hormiga.data?.length || 0} gastos hormiga recientes. Mis metas activas: ${metas.data?.map(m => m.nombre).join(', ') || 'ninguna aún'}. Dame un tip.` 
+        {
+          role: 'user',
+          content: `Mi contexto: FinScore ${profile.data?.finscore_actual || 500}. Tengo ${hormiga.data?.length || 0} gastos hormiga recientes. Mis metas activas: ${metas.data?.map(m => m.nombre).join(', ') || 'ninguna aún'}. Dame un tip.`
         }
       ],
       max_tokens: 150,

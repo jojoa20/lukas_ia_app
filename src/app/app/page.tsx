@@ -1,73 +1,80 @@
 "use client";
 
-import React from "react";
-import MobileHeader from "@/components/mobile/MobileHeader";
-import MobileFinScore from "@/components/mobile/MobileFinScore";
-import MobileLeakBuster from "@/components/mobile/MobileLeakBuster";
-import MobileBottomBar from "@/components/mobile/MobileBottomBar";
-import { useFinScore, useTransactions, addTransaction, useProfile } from "@/lib/hooks";
+import React, { useState } from "react";
+import AuthenticatedBottomNav from "@/components/mobile/AuthenticatedBottomNav";
+import { AnimatePresence, motion } from "framer-motion";
+
+// Vistas — exactas del 15 de abril + navegación 5 menús
+import HomeView from "@/components/demo/HomeView";
+import MetasView from "@/components/demo/MetasView";
+import HistorialView from "@/components/demo/HistorialView";
+import ChatView from "@/components/demo/ChatView";
+import AnalyticsView from "@/components/demo/AnalyticsView";
 
 export default function MobileApp() {
-  const { profile, loading: profileLoading, error: profileError } = useProfile();
-  const { score: finScore, loading: scoreLoading, refresh: refreshScore } = useFinScore();
-  const { transactions, loading: txLoading, refresh: refreshTx } = useTransactions();
-
-  // Calcular totales de gastos hormiga localmente a partir de las transacciones si el endpoint no lo da
-  const hormigaTransactions = transactions.filter(t => t.es_gasto_hormiga);
-  const gastoHormigaTotal = hormigaTransactions.reduce((acc, t) => acc + (t.monto || 0), 0);
-  const gastosHormigaCount = hormigaTransactions.length;
+  const [activeTab, setActiveTab] = useState("home");
 
   const handleAddTransaction = async (amount: number, category: string) => {
     const isGasto = amount < 0;
-
-    const result = await addTransaction({
-      tipo: isGasto ? "gasto" : "ingreso",
-      monto: Math.abs(amount),
-      categoria: category,
-      descripcion: category,
-      metodo_entrada: "manual",
-      es_gasto_hormiga: isGasto && Math.abs(amount) < 50000,
-      fecha_transaccion: new Date().toISOString().split("T")[0],
-    });
-
-    if (result.ok) {
-      // Refrescar datos
-      await refreshScore();
-      await refreshTx();
-    } else {
-      alert("Error al guardar: " + result.error);
+    try {
+      await fetch('/api/transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tipo: isGasto ? "gasto" : "ingreso",
+          monto: Math.abs(amount),
+          categoria: category,
+          descripcion: category,
+          metodo_entrada: "manual",
+          es_gasto_hormiga: isGasto && Math.abs(amount) < 50000,
+          fecha_transaccion: new Date().toISOString().split("T")[0],
+        })
+      });
+    } catch (e) {
+      console.error(e);
     }
   };
 
-  if (profileLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-[#050505]">
-        <div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
-
-  if (profileError) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-[#050505] p-8 text-center">
-        <h2 className="text-xl font-bold text-white mb-4">¡Ups! Algo salió mal</h2>
-        <p className="text-gray-400 mb-6">{profileError}</p>
-        <button onClick={() => window.location.reload()} className="bg-cyan-600 text-white px-6 py-2 rounded-lg">Reintentar</button>
-      </div>
-    );
-  }
+  const renderContent = () => {
+    switch (activeTab) {
+      case "home":
+        return <HomeView onOpenAlert={() => setActiveTab("grupos")} />;
+      case "metas":
+        return <MetasView />;
+      case "analytics":
+      case "grupos":
+        return <AnalyticsView />;
+      case "historial":
+        return <HistorialView />;
+      case "chat":
+        return <ChatView />;
+      default:
+        return <div className="text-white text-center mt-20">Vista no encontrada</div>;
+    }
+  };
 
   return (
-    <div className="flex flex-col w-full h-full px-4 overflow-y-auto no-scrollbar relative">
-      <MobileHeader />
-      <MobileFinScore score={finScore} loading={scoreLoading} />
-      <MobileLeakBuster 
-        gastoHormigaTotal={gastoHormigaTotal}
-        gastosHormigaCount={gastosHormigaCount}
-        transactions={transactions}
-        loading={txLoading}
+    <div className="flex flex-col w-full h-full relative overflow-hidden bg-[#050505]">
+      <div className="flex-1 overflow-y-auto no-scrollbar pb-24 relative z-10">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.3 }}
+            className="w-full h-full"
+          >
+            {renderContent()}
+          </motion.div>
+        </AnimatePresence>
+      </div>
+
+      <AuthenticatedBottomNav
+        activeTab={activeTab}
+        onChangeTab={setActiveTab}
+        onTransactionAdd={handleAddTransaction}
       />
-      <MobileBottomBar onTransactionAdd={handleAddTransaction} />
     </div>
   );
 }
