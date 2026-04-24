@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/actions';
+import { createClient, getAuthenticatedUser } from '@/lib/supabase/actions';
 
 // GET /api/leak-buster/graph
 // Genera los nodos y links del grafo D3 force-directed a partir de
@@ -9,10 +9,10 @@ import { createClient } from '@/lib/supabase/actions';
 //   period: 'week' | 'month' | 'quarter' (default: 'month')
 //   alert_threshold: número COP (default: 100000)
 export async function GET(req: Request) {
-  const supabase = await createClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-  if (authError || !user) {
+  let user, supabase;
+  try {
+    ({ supabase, user } = await getAuthenticatedUser());
+  } catch (authError) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

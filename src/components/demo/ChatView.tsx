@@ -6,7 +6,7 @@ import { useChat } from "@ai-sdk/react";
 
 export default function ChatView() {
   const [input, setInput] = useState("");
-  const { messages, sendMessage, status } = useChat({});
+  const { messages, sendMessage, status, error } = useChat({ id: "lukas-ai-session" });
   const scrollRef = useRef<HTMLDivElement>(null);
   const isLoading = status === 'submitted';
 
@@ -64,6 +64,11 @@ export default function ChatView() {
             </div>
           </motion.div>
         )}
+        {error && (
+          <div className="bg-red-500/20 text-red-500 p-4 rounded-xl text-sm border border-red-500/50">
+            Error: {error.message || "Fallo en la comunicación con Lukas"}
+          </div>
+        )}
       </div>
 
       <form onSubmit={handleSubmit} className="flex gap-2 bg-[#111827] border border-white/10 p-2 rounded-full backdrop-blur-md">
@@ -75,7 +80,7 @@ export default function ChatView() {
         />
         <button 
           type="submit"
-          disabled={isLoading || !input.trim()}
+          disabled={isLoading || !(input || "").trim()}
           className="bg-[#D8A93F] text-black w-10 h-10 rounded-full flex items-center justify-center font-bold disabled:opacity-50"
         >
           →

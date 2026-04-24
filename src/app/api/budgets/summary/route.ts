@@ -1,15 +1,15 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/actions';
+import { createClient, getAuthenticatedUser } from '@/lib/supabase/actions';
 
 // GET /api/budgets/summary
 // Retorna resumen de presupuestos del mes: total presupuestado vs gastado por categoría.
 // Alimenta: AnalyticsView (donut chart), HomeView (barra de presupuesto)
 // Query params: year (default: año actual), month (default: mes actual, 1-12)
 export async function GET(req: Request) {
-  const supabase = await createClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-  if (authError || !user) {
+  let user, supabase;
+  try {
+    ({ supabase, user } = await getAuthenticatedUser());
+  } catch (authError) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

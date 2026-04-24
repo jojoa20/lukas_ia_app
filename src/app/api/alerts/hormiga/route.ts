@@ -1,15 +1,15 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/actions';
+import { createClient, getAuthenticatedUser } from '@/lib/supabase/actions';
 
 // GET /api/alerts/hormiga
 // Detecta clusters de gastos hormiga en últimos N días y retorna desglose.
 // Alimenta: AlertModal (el modal de alerta de gastos pequeños recurrentes)
 // Query params: days (default: 7)
 export async function GET(req: Request) {
-  const supabase = await createClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-  if (authError || !user) {
+  let user, supabase;
+  try {
+    ({ supabase, user } = await getAuthenticatedUser());
+  } catch (authError) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

@@ -40,13 +40,27 @@ export async function getAuthenticatedUser() {
 
   // Buscamos el perfil real por el ID de Clerk
   // NOTA: Asegúrate de añadir la columna 'clerk_id' en Supabase.
-  const { data: user, error } = await supabase
+  let { data: user, error } = await supabase
     .from('profiles')
     .select('*')
     .eq('clerk_id', userId)
     .single();
 
-  if (error || !user) {
+  // Si no encuentra el perfil (código PGRST116), lo creamos automáticamente
+  if (error && error.code === 'PGRST116') {
+    const newId = crypto.randomUUID();
+    const { data: newUser, error: insertError } = await supabase
+      .from('profiles')
+      .insert([{ id: newId, clerk_id: userId, finscore_actual: 800 }])
+      .select()
+      .single();
+      
+    if (insertError) {
+      console.error('Error auto-creating profile:', insertError);
+      throw new Error('Failed to auto-create profile');
+    }
+    user = newUser;
+  } else if (error || !user) {
     console.error('Error fetching profile:', error);
     throw new Error('Profile not found for this Clerk ID');
   }
