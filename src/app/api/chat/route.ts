@@ -20,12 +20,12 @@ export async function POST(req: Request) {
       tools: {
         getFinscore: tool({
           description: 'Obtiene el FinScore actual y en tiempo real del usuario autenticado en la base de datos.',
-          parameters: z.object({}),
+          inputSchema: z.object({}),
           execute: async () => await getFinscore(),
         }),
         createMeta: tool({
           description: 'Crea una nueva meta de ahorro financiero para el usuario en la base de datos.',
-          parameters: z.object({
+          inputSchema: z.object({
             nombre: z.string().describe('El nombre de la meta de ahorro (ej: Viaje a la playa)'),
             monto: z.number().describe('El monto en pesos colombianos objetivo para la meta')
           }),
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
         }),
         addGastoHormiga: tool({
           description: 'Registra un gasto hormiga (gasto pequeño innecesario) en la base de datos que afecta negativamente el FinScore del usuario.',
-          parameters: z.object({
+          inputSchema: z.object({
             monto: z.number().describe('Monto monetario del gasto en pesos colombianos'),
             descripcion: z.string().describe('Qué fue lo que compró el usuario (ej: Café, snacks, uber, dulces)')
           }),
