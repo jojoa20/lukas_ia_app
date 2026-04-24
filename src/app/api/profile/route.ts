@@ -1,64 +1,78 @@
-import { createClient } from '@/lib/supabase/server'
-import { NextRequest, NextResponse } from 'next/server'
-import { z } from 'zod'
+import { NextResponse } from 'next/server';
+import { createClient, getAuthenticatedUser } from '@/lib/supabase/actions';
 
-const updateSchema = z.object({
-  full_name: z.string().min(1).max(100).optional(),
-  avatar_url: z.string().url().optional(),
-  ingreso_mensual_est: z.number().nonnegative().optional(),
-  meta_ahorro_mensual: z.number().nonnegative().optional(),
-  pais: z.string().length(2).optional(),
-  moneda_base: z.string().length(3).optional(),
-})
-
+// GET /api/profile
+// Retorna el perfil completo del usuario autenticado.
+// Alimenta: HomeView (nombre), FinScoreDial (finscore), GamificationBanner (racha)
 export async function GET() {
-  const supabase = await createClient()
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-  if (authError || !user) {
-    return NextResponse.json(
-      { error: { code: 'UNAUTHORIZED', message: 'Sesión requerida' } },
-      { status: 401 }
-    )
+  let user, supabase;
+  try {
+    ({ supabase, user } = await getAuthenticatedUser());
+  } catch (authError) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const { data, error } = await supabase
     .from('profiles')
-    .select('*')
+    .select(`
+      id,
+      full_name,
+      email,
+      avatar_url,
+      pais,
+      moneda_base,
+      ingreso_mensual_est,
+      meta_ahorro_mensual,
+      finscore_actual,
+      racha_actual_dias
+    `)
     .eq('id', user.id)
-    .single()
+    .single();
 
   if (error) {
-    console.error('[API /api/profile] DB error:', error)
     return NextResponse.json(
       { error: { code: 'DB_ERROR', message: error.message } },
       { status: 500 }
-    )
+    );
   }
 
-  return NextResponse.json({ data })
+  return NextResponse.json({ data });
 }
 
-export async function PUT(req: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+// PUT /api/profile
+// Actualiza datos del perfil (nombre, ingreso, avatar, etc.)
+export async function PUT(req: Request) {
+  let user, supabase;
+  try {
+    ({ supabase, user } = await getAuthenticatedUser());
+  } catch (authError) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
 
-  const body = await req.json()
-  const parsed = updateSchema.safeParse(body)
+  const body = await req.json();
 
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+  // TODO: agregar validación Zod aquí (Fase 2)
+  const allowedFields = ['full_name', 'avatar_url', 'ingreso_mensual_est', 'meta_ahorro_mensual', 'pais', 'moneda_base'];
+  const updateData: Record<string, unknown> = {};
+  for (const field of allowedFields) {
+    if (body[field] !== undefined) {
+      updateData[field] = body[field];
+    }
   }
 
   const { data, error } = await supabase
     .from('profiles')
-    .update(parsed.data)
+    .update(updateData)
     .eq('id', user.id)
     .select()
-    .single()
+    .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    return NextResponse.json(
+      { error: { code: 'DB_ERROR', message: error.message } },
+      { status: 500 }
+    );
+  }
 
-  return NextResponse.json({ data })
+  return NextResponse.json({ data });
 }

@@ -1,134 +1,55 @@
 "use client";
 
 import React from "react";
-import { Transaction } from "@/lib/supabase";
+import { motion } from "framer-motion";
 
-interface MobileLeakBusterProps {
-  gastoHormigaTotal?: number;
-  gastosHormigaCount?: number;
-  transactions?: Transaction[];
-  loading?: boolean;
-}
-
-// Formatea números como moneda COP
-const formatCOP = (amount: number) =>
-  new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(amount);
-
-export default function MobileLeakBuster({
-  gastoHormigaTotal = 0,
-  gastosHormigaCount = 0,
-  transactions = [],
-  loading = false,
-}: MobileLeakBusterProps) {
-
-  // Contar suscripciones activas (categoría = streaming / automoto)
-  const suscripciones = transactions.filter(
-    (t) => t.categoria === "streaming" || t.subcategoria === "streaming"
-  ).length;
-
-  // Agrupar gastos hormiga por categoría para los nodos del grafo
-  const hormigasByCategory = transactions
-    .filter((t) => t.es_gasto_hormiga)
-    .reduce<Record<string, number>>((acc, t) => {
-      const key = t.subcategoria || t.categoria;
-      acc[key] = (acc[key] || 0) + Number(t.monto);
-      return acc;
-    }, {});
-
-  const topCategorias = Object.entries(hormigasByCategory)
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, 3);
+export default function MobileLeakBuster() {
+  const leaks = [
+    { name: "Suscripciones", amount: "$45.000", color: "#FF5F5F" },
+    { name: "Café diario", amount: "$32.000", color: "#D8A93F" },
+    { name: "Domicilios", amount: "$68.000", color: "#50E3C2" },
+  ];
 
   return (
-    <div className="bg-white/5 border border-white/10 rounded-[20px] backdrop-blur-md flex-1 flex flex-col p-4 mb-4 relative z-10 w-full">
-      <div className="text-center mb-4">
-        <h3 className="text-lg font-bold">Lukas AI - Leak Buster</h3>
-        <p className="text-xs text-white/60">
-          Identificador de fugas &quot;Gastos Hormiga&quot;
+    <div className="bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-xl">
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-xl font-bold text-white/90">LeakBuster</h2>
+        <span className="text-[10px] bg-red-500/20 text-red-400 px-2 py-1 rounded-full font-bold uppercase tracking-tighter">3 fugas activas</span>
+      </div>
+
+      <div className="space-y-4">
+        {leaks.map((leak, idx) => (
+          <motion.div
+            key={idx}
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: idx * 0.1 }}
+            className="flex items-center justify-between p-3 bg-white/5 rounded-2xl border border-white/5"
+          >
+            <div className="flex items-center space-x-3">
+              <div 
+                className="w-10 h-10 rounded-xl flex items-center justify-center text-lg"
+                style={{ backgroundColor: `${leak.color}20`, color: leak.color }}
+              >
+                💧
+              </div>
+              <div>
+                <p className="text-sm font-bold text-white">{leak.name}</p>
+                <p className="text-[10px] text-white/40 uppercase">Gasto Mensual</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-sm font-black text-white">{leak.amount}</p>
+              <button className="text-[10px] text-[#D8A93F] font-bold uppercase hover:underline">Cortar fuga</button>
+            </div>
+          </motion.div>
+        ))}
+      </div>
+
+      <div className="mt-6 p-4 bg-[#D8A93F]/10 rounded-2xl border border-[#D8A93F]/20">
+        <p className="text-xs text-white/80 leading-relaxed">
+          <span className="font-bold text-[#D8A93F]">Tip de Lukas:</span> Has ahorrado <span className="font-bold">$145.000</span> este mes cerrando fugas. ¡Vas por buen camino, pana!
         </p>
-      </div>
-
-      {/* Network Graph Simulation Wrapper */}
-      <div className="relative h-[250px] w-full flex justify-center items-center bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.05)_0%,transparent_70%)] overflow-hidden">
-        
-        {/* CSS-based Graph Mock */}
-        {/* Center Node */}
-        <div className="absolute w-[80px] h-[80px] bg-[#2E2659] rounded-full flex justify-center items-center text-center text-[10px] leading-tight z-10 border-2 border-[#554499] shadow-[0_0_20px_rgba(85,68,153,0.5)]">
-          Ingresos /<br />
-          Quincena
-        </div>
-
-        {/* Edges */}
-        <div className="absolute w-[100px] h-[2px] bg-gradient-to-r from-[#554499]/80 to-transparent left-1/2 top-1/2 origin-left rotate-[190deg] z-0" />
-        <div className="absolute w-[80px] h-[2px] bg-gradient-to-r from-[#554499]/80 to-transparent left-1/2 top-1/2 origin-left rotate-[230deg] z-0" />
-        <div className="absolute w-[90px] h-[2px] bg-gradient-to-r from-[#554499]/80 to-transparent left-1/2 top-1/2 origin-left rotate-[270deg] z-0" />
-        <div className="absolute w-[110px] h-[2px] bg-gradient-to-r from-[#554499]/80 to-transparent left-1/2 top-1/2 origin-left rotate-[340deg] z-0" />
-        <div className="absolute w-[100px] h-[2px] bg-gradient-to-r from-[#554499]/80 to-transparent left-1/2 top-1/2 origin-left rotate-[90deg] z-0" />
-        <div className="absolute w-[120px] h-[2px] bg-gradient-to-r from-[#554499]/80 to-[#F15A42]/80 left-1/2 top-1/2 origin-left rotate-[45deg] z-0" />
-
-        {/* Nodes - Gastos normales */}
-        <div className="absolute rounded-full z-10 w-[30px] h-[30px] top-[40px] left-[30px] bg-[#EBB33E] shadow-[0_0_15px_rgba(235,179,62,0.3)]"></div>
-        <div className="absolute text-[9px] text-white/70 whitespace-nowrap top-[75px] left-[15px]">Streaming</div>
-
-        <div className="absolute rounded-full z-10 w-[25px] h-[25px] top-[10px] left-[80px] bg-[#EBB33E] shadow-[0_0_15px_rgba(235,179,62,0.3)]"></div>
-        <div className="absolute text-[9px] text-white/70 whitespace-nowrap top-[0px] left-[65px]">Automoto</div>
-
-        <div className="absolute rounded-full z-10 w-[25px] h-[25px] top-[140px] left-[40px] bg-[#EBB33E] shadow-[0_0_15px_rgba(235,179,62,0.3)]"></div>
-        <div className="absolute text-[9px] text-white/70 whitespace-nowrap top-[135px] left-[10px]">
-          {topCategorias[2]?.[0] ?? "Cafés"}
-        </div>
-
-        {/* Blue Nodes */}
-        <div className="absolute rounded-full z-10 w-[15px] h-[15px] top-[10px] left-[160px] bg-[#3B3877] shadow-[0_0_15px_rgba(59,56,119,0.3)]"></div>
-        <div className="absolute text-[9px] text-white/70 whitespace-nowrap top-[0px] left-[150px]">Alquiler</div>
-
-        <div className="absolute rounded-full z-10 w-[35px] h-[35px] top-[50px] right-[40px] bg-[#3B3877] shadow-[0_0_15px_rgba(59,56,119,0.3)]"></div>
-        <div className="absolute text-[9px] text-white/70 whitespace-nowrap top-[35px] right-[40px]">Ahorro<br/>Prog.</div>
-
-        {/* Red Node - ALERTA FUGA con datos reales */}
-        <div className="absolute rounded-full z-10 w-[45px] h-[45px] bottom-[40px] right-[40px] bg-[#F15A42] animate-pulse shadow-[0_0_20px_rgba(241,90,66,0.6)]">
-          <div className="absolute w-2 h-2 bg-[#F15A42] rounded-full top-[-10px] left-[10px]"></div>
-          <div className="absolute w-2 h-2 bg-[#F15A42] rounded-full top-[-5px] right-[-5px]"></div>
-          <div className="absolute w-2 h-2 bg-[#F15A42] rounded-full bottom-[5px] right-[-10px]"></div>
-        </div>
-
-        {/* Tooltip con datos reales de Supabase */}
-        <div className="absolute bottom-[20px] left-[20px] bg-[#1a1525]/90 border border-[#F15A42]/50 rounded-lg p-2 z-20 w-[130px] shadow-xl backdrop-blur-md">
-          <p className="text-[9px] font-bold text-[#F15A42] mb-[2px] uppercase">Cluster Alerta:</p>
-          <p className="text-[10px] text-white font-semibold">Gastos Hormiga</p>
-          {loading ? (
-            <>
-              <div className="w-20 h-3 bg-white/10 animate-pulse rounded mt-1" />
-              <div className="w-14 h-3 bg-white/10 animate-pulse rounded mt-1" />
-            </>
-          ) : (
-            <>
-              <p className="text-[9px] text-white/70 mt-1">
-                Acum.: {formatCOP(gastoHormigaTotal)}
-              </p>
-              <p className="text-[9px] text-white/70">{gastosHormigaCount} Trans.</p>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Stats Footer */}
-      <div className="grid grid-cols-2 gap-4 border-t border-white/10 pt-4 mt-2">
-        <div>
-          <p className="text-[11px] text-white/70">Suscripciones</p>
-          <p className="text-sm font-bold">
-            activas:{" "}
-            {loading ? (
-              <span className="inline-block w-4 h-4 bg-white/10 animate-pulse rounded" />
-            ) : (
-              <span className="text-[#EBB33E]">{suscripciones || 6}</span>
-            )}
-          </p>
-        </div>
-        <div>
-          <p className="text-[11px] text-white/70">Micro-recompensas:</p>
-          <p className="text-sm font-bold text-[#EBB33E]">3 pendientes</p>
-        </div>
       </div>
     </div>
   );

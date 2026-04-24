@@ -1,0 +1,23 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/alerts/hormiga/route": "app/api/alerts/hormiga/route.js",
+  "/api/budgets/route": "app/api/budgets/route.js",
+  "/api/budgets/summary/route": "app/api/budgets/summary/route.js",
+  "/api/chat/route": "app/api/chat/route.js",
+  "/api/gamification/streak/route": "app/api/gamification/streak/route.js",
+  "/api/groups/route": "app/api/groups/route.js",
+  "/api/leak-buster/graph/route": "app/api/leak-buster/graph/route.js",
+  "/api/metas/[id]/route": "app/api/metas/[id]/route.js",
+  "/api/finscore/history/route": "app/api/finscore/history/route.js",
+  "/api/metas/route": "app/api/metas/route.js",
+  "/api/leak-buster/summary/route": "app/api/leak-buster/summary/route.js",
+  "/api/profile/route": "app/api/profile/route.js",
+  "/api/transactions/ [id]/route": "app/api/transactions/ [id]/route.js",
+  "/api/transactions/[id]/route": "app/api/transactions/[id]/route.js",
+  "/api/transactions/route": "app/api/transactions/route.js",
+  "/api/voice/session/route": "app/api/voice/session/route.js",
+  "/page": "app/page.js",
+  "/favicon.ico/route": "app/favicon.ico/route.js",
+  "/app/page": "app/app/page.js",
+  "/chat/page": "app/chat/page.js"
+}

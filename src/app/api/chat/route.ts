@@ -1,47 +1,53 @@
-import { createClient } from '@/lib/supabase/server'
-import { NextRequest, NextResponse } from 'next/server'
-import OpenAI from 'openai'
+import { streamText, tool } from 'ai';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { z } from 'zod';
+import { getFinscore, createMeta, addGastoHormiga } from '@/lib/supabase/actions';
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+const google = createGoogleGenerativeAI({
+  apiKey: process.env.GEMINI_API_KEY || ''
+});
 
-export async function POST(req: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+const SYSTEM_INSTRUCTION = "Eres Lukas, un robo-advisor financiero para la Gen Z en Colombia. Eres directo, usas jerga paisa (parce, nea, lucas). Tus respuestas son concisas (maximo 2 oraciones). Si el usuario reporta un gasto, analizalo financieramente.";
 
-  const { messages } = await req.json()
-
+export async function POST(req: Request) {
   try {
-    // 1. Obtener contexto para RAG (Retrieval Augmented Generation) manual
-    const { data: recentTx } = await supabase
-      .from('transactions')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('fecha_transaccion', { ascending: false })
-      .limit(10)
+    const { messages } = await req.json();
 
-    const context = `Contexto del usuario:
-Transacciones recientes: ${JSON.stringify(recentTx)}
-`
+    const result = await streamText({
+      model: google('gemini-1.5-flash'),
+      system: SYSTEM_INSTRUCTION,
+      messages,
+      tools: {
+        getFinscore: tool({
+          description: 'Obtiene el FinScore actual y en tiempo real del usuario autenticado en la base de datos.',
+          inputSchema: z.object({}),
+          execute: async () => await getFinscore(),
+        }),
+        createMeta: tool({
+          description: 'Crea una nueva meta de ahorro financiero para el usuario en la base de datos.',
+          inputSchema: z.object({
+            nombre: z.string().describe('El nombre de la meta de ahorro (ej: Viaje a la playa)'),
+            monto: z.number().describe('El monto en pesos colombianos objetivo para la meta')
+          }),
+          execute: async ({ nombre, monto }) => await createMeta({ nombre, monto }),
+        }),
+        addGastoHormiga: tool({
+          description: 'Registra un gasto hormiga (gasto pequeño innecesario) en la base de datos que afecta negativamente el FinScore del usuario.',
+          inputSchema: z.object({
+            monto: z.number().describe('Monto monetario del gasto en pesos colombianos'),
+            descripcion: z.string().describe('Qué fue lo que compró el usuario (ej: Café, snacks, uber, dulces)')
+          }),
+          execute: async ({ monto, descripcion }) => await addGastoHormiga({ monto, descripcion })
+        })
+      }
+    });
 
-    // 2. Chat completion
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: 'Eres Lukas, el asistente financiero inteligente. Tu personalidad es paisa, amable, sabio y motivador. Responde preguntas del usuario sobre sus finanzas basándote en su contexto.'
-        },
-        ...messages.map((m: any) => ({
-          role: m.role,
-          content: m.role === 'user' ? `${context}\nPregunta: ${m.content}` : m.content
-        }))
-      ],
-      stream: false, // Por ahora sin streaming para simplicidad
-    })
-
-    return NextResponse.json({ data: response.choices[0].message })
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return result.toTextStreamResponse();
+  } catch (error) {
+    console.error('Gemini error:', error);
+    return new Response(JSON.stringify({ error: 'Error generating response' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
 }
