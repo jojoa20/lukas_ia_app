@@ -10,25 +10,33 @@ import HistorialView from "./HistorialView";
 import BottomNav from "./BottomNav";
 
 export default function DemoContainer() {
-  const [activeTab, setActiveTab] = useState("home");
+  const [activeTab, setActiveTab] = useState("home"); // home, chat, analytics
+  const [viewVersion, setViewVersion] = useState(0);
   const [showAlert, setShowAlert] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
+
+  const changeTab = (tab: string) => {
+    setActiveTab(tab);
+    setViewVersion((version) => version + 1);
+  };
 
   return (
     <div className="flex flex-col h-full w-full relative">
       {showSplash && <SplashScreen onFinishLoading={() => setShowSplash(false)} />}
-      
+
+      {/* Scrollable Content Area */}
       <div className="flex-1 overflow-y-auto no-scrollbar pb-24 relative z-10">
         <AnimatePresence mode="wait">
-          {activeTab === "home" && <HomeView key="home" onOpenAlert={() => setShowAlert(true)} />}
-          {activeTab === "chat" && <ChatView key="chat" />}
-          {activeTab === "analytics" && <AnalyticsView key="analytics" />}
-          {activeTab === "metas" && <MetasView key="metas" />}
-          {activeTab === "historial" && <HistorialView key="historial" />}
+          {activeTab === "home" && <HomeView key={`home-${viewVersion}`} onOpenAlert={() => setShowAlert(true)} />}
+          {activeTab === "chat" && <ChatView key={`chat-${viewVersion}`} onNavigate={changeTab} />}
+          {activeTab === "analytics" && <AnalyticsView key={`analytics-${viewVersion}`} />}
+          {activeTab === "metas" && <MetasView key={`metas-${viewVersion}`} />}
+          {activeTab === "historial" && <HistorialView key={`historial-${viewVersion}`} />}
         </AnimatePresence>
       </div>
 
-      <BottomNav activeTab={activeTab} onChangeTab={setActiveTab} />
+      {/* Bottom Navigation */}
+      <BottomNav activeTab={activeTab} onChangeTab={changeTab} />
     </div>
   );
 }
