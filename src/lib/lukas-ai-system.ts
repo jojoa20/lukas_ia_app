@@ -50,10 +50,11 @@ Formato:
 <action>{"type":"CREATE_BUDGET","categoria":"comida","limite_cop":600000,"anio":2026,"mes":4}</action>
 
 5. Crear grupo:
-Datos obligatorios: nombre.
+Datos obligatorios: nombre, invitee_email.
 tipo opcional: "pareja", "familia", "amigos", "otro".
+Si el usuario pide crear un grupo pero no da correo, pregunta el correo del amigo.
 Formato:
-<action>{"type":"CREATE_GROUP","nombre":"Ahorro viaje","tipo":"amigos"}</action>
+<action>{"type":"CREATE_GROUP","nombre":"Ahorro viaje","tipo":"amigos","invitee_email":"amigo@email.com"}</action>
 
 6. Navegar por la app:
 page debe ser "home", "metas", "chat", "analytics" o "historial".

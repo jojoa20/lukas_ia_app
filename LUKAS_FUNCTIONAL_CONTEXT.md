@@ -88,12 +88,13 @@ Maneja grupos financieros compartidos.
 Para crear un grupo se necesitan:
 
 - `nombre`: minimo 3 caracteres.
+- `invitee_email`: correo del amigo a invitar.
 - `tipo`: opcional, puede ser `pareja`, `familia`, `amigos`, `otro`.
 
 Accion:
 
 ```txt
-<action>{"type":"CREATE_GROUP","nombre":"Viaje con amigos","tipo":"amigos"}</action>
+<action>{"type":"CREATE_GROUP","nombre":"Viaje con amigos","tipo":"amigos","invitee_email":"amigo@email.com"}</action>
 ```
 
 ### Historial
@@ -103,6 +104,8 @@ Lista movimientos:
 - Ingresos.
 - Gastos.
 - Gastos hormiga.
+- Metricas actuales de ingresos, gastos, balance y total hormiga.
+- Meses ordenados del mas reciente al mas antiguo.
 
 Puede filtrar por tipo. Lukas debe usar este contexto para responder cosas como:
 

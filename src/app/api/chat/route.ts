@@ -41,6 +41,10 @@ function extractDescription(text: string) {
   return text.match(/(?:en|por|para|de)\s+([a-záéíóúñ\s]+)$/i)?.[1]?.trim() || 'Movimiento'
 }
 
+function extractEmail(text: string) {
+  return text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0]?.toLowerCase() || null
+}
+
 function isAffirmative(text: string) {
   return /^(si|sí|confirmo|dale|hagale|hágale|listo|ok|okay|correcto|seguro)\b/.test(text.trim().toLowerCase())
 }
@@ -133,11 +137,12 @@ function localFallback(messages: ChatMessage[], recentTx: any[] = []) {
 
   if (text.includes('grupo')) {
     const name = text.match(/(?:grupo|llamado|para)\s+([a-záéíóúñ\s]+?)(?:\s+tipo|$)/i)?.[1]?.replace(/^de\s+/, '').trim()
-    if (!name) return { role: 'assistant', content: 'Listo, pana. Decime el nombre del grupo y si es de pareja, familia, amigos u otro.' }
+    const email = extractEmail(text)
+    if (!name || !email) return { role: 'assistant', content: 'Listo, pana. Para crear el grupo me falta nombre del grupo y correo del amigo.' }
     const tipo = text.includes('familia') ? 'familia' : text.includes('pareja') ? 'pareja' : text.includes('otro') ? 'otro' : 'amigos'
     return {
       role: 'assistant',
-      content: `Listo. Creo el grupo "${name}".\n<action>{"type":"CREATE_GROUP","nombre":"${name}","tipo":"${tipo}"}</action>`,
+      content: `Listo. Creo el grupo "${name}" e invito a ${email}.\n<action>{"type":"CREATE_GROUP","nombre":"${name}","tipo":"${tipo}","invitee_email":"${email}"}</action><action>{"type":"NAVIGATE","page":"analytics"}</action>`,
     }
   }
 
@@ -290,7 +295,7 @@ CONTEXTO ACTUAL DEL USUARIO:
       })
     }
 
-    const deterministicIntent = /saldo|gast|pague|pagué|compre|compré|ingreso|recibi|recibí|llego dinero|llegó dinero|me pagaron|gan/.test(latestText)
+    const deterministicIntent = /saldo|gast|pague|pagué|compre|compré|ingreso|recibi|recibí|llego dinero|llegó dinero|me pagaron|gan|grupo/.test(latestText)
       || previousAssistant.includes('se borrara el saldo anterior')
 
     if (deterministicIntent) {

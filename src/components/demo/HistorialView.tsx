@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 
 interface Transaction {
@@ -10,6 +10,19 @@ interface Transaction {
   descripcion: string;
   fecha_transaccion: string;
   es_gasto_hormiga: boolean;
+}
+
+function monthKey(dateValue: string) {
+  const date = new Date(dateValue || Date.now());
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthLabel(key: string) {
+  const [year, month] = key.split("-").map(Number);
+  return new Date(year, month - 1, 1).toLocaleDateString("es-CO", {
+    month: "long",
+    year: "numeric",
+  });
 }
 
 export default function HistorialView() {
@@ -24,6 +37,36 @@ export default function HistorialView() {
   const [categoria, setCategoria] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [esHormiga, setEsHormiga] = useState(false);
+
+  const metrics = useMemo(() => {
+    const ingresos = transactions
+      .filter((tx) => tx.tipo === "ingreso")
+      .reduce((sum, tx) => sum + Number(tx.monto || 0), 0);
+    const gastos = transactions
+      .filter((tx) => tx.tipo === "gasto")
+      .reduce((sum, tx) => sum + Number(tx.monto || 0), 0);
+    const hormigas = transactions
+      .filter((tx) => tx.es_gasto_hormiga)
+      .reduce((sum, tx) => sum + Number(tx.monto || 0), 0);
+
+    return { ingresos, gastos, balance: ingresos - gastos, hormigas };
+  }, [transactions]);
+
+  const groupedTransactions = useMemo(() => {
+    const sorted = [...transactions].sort((a, b) => {
+      const dateA = new Date(a.fecha_transaccion || 0).getTime();
+      const dateB = new Date(b.fecha_transaccion || 0).getTime();
+      return dateB - dateA;
+    });
+    const groups = new Map<string, Transaction[]>();
+
+    for (const tx of sorted) {
+      const key = monthKey(tx.fecha_transaccion);
+      groups.set(key, [...(groups.get(key) || []), tx]);
+    }
+
+    return [...groups.entries()].sort(([a], [b]) => b.localeCompare(a));
+  }, [transactions]);
 
   // Modelo de Detección: Grafo de Frecuencias y Reglas
   useEffect(() => {
@@ -119,6 +162,27 @@ export default function HistorialView() {
         </button>
       </div>
 
+      <div className="grid grid-cols-2 gap-3 mb-5">
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+          <p className="text-white/45 text-[10px] uppercase tracking-widest">Ingresos</p>
+          <p className="text-green-400 text-lg font-black">+${metrics.ingresos.toLocaleString()}</p>
+        </div>
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+          <p className="text-white/45 text-[10px] uppercase tracking-widest">Gastos</p>
+          <p className="text-red-400 text-lg font-black">-${metrics.gastos.toLocaleString()}</p>
+        </div>
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+          <p className="text-white/45 text-[10px] uppercase tracking-widest">Balance</p>
+          <p className={`text-lg font-black ${metrics.balance >= 0 ? "text-green-400" : "text-red-400"}`}>
+            {metrics.balance >= 0 ? "+" : "-"}${Math.abs(metrics.balance).toLocaleString()}
+          </p>
+        </div>
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+          <p className="text-white/45 text-[10px] uppercase tracking-widest">Hormiga</p>
+          <p className="text-[#D8A93F] text-lg font-black">${metrics.hormigas.toLocaleString()}</p>
+        </div>
+      </div>
+
       {loading && transactions.length === 0 ? (
         <div className="space-y-3 animate-pulse">
           {[1, 2, 3, 4].map(i => (
@@ -127,7 +191,7 @@ export default function HistorialView() {
         </div>
       ) : transactions.length > 0 ? (
         <div className="space-y-3">
-          {transactions.map((tx, index) => (
+          {groupedTransactions.flatMap(([, monthTransactions]) => monthTransactions).map((tx, index) => (
             <motion.div
               key={tx.id || `tx-${index}-${tx.monto}`}
               initial={{ opacity: 0, y: 10 }}

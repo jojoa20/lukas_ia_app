@@ -192,7 +192,7 @@ export async function createBudget(args: { categoria: string, limite_cop: number
   }
 }
 
-export async function createGroup(args: { nombre: string, tipo?: 'pareja' | 'familia' | 'amigos' | 'otro' }) {
+export async function createGroup(args: { nombre: string, tipo?: 'pareja' | 'familia' | 'amigos' | 'otro', invitee_email?: string }) {
   try {
     const user = await getLukasUser();
     const ensuredProfile = await ensureProfile(user);
@@ -213,9 +213,73 @@ export async function createGroup(args: { nombre: string, tipo?: 'pareja' | 'fam
       rol: 'admin'
     });
 
-    return { success: true, data: group, mensaje: "Grupo creado." };
+    if (args.invitee_email) {
+      const email = args.invitee_email.trim().toLowerCase();
+      const invitePayload = {
+        group_id: group.id,
+        email,
+        invited_by: userId,
+        status: 'pending',
+      };
+
+      const { error: inviteError } = await adminDB.from('group_invitations').insert(invitePayload);
+      if (inviteError) {
+        console.warn("No se pudo guardar group_invitations:", inviteError.message);
+      }
+
+      const { data: invitedProfiles } = await adminDB
+        .from('profiles')
+        .select('id')
+        .eq('email', email)
+        .limit(1);
+      const invitedProfile = invitedProfiles?.[0];
+
+      if (invitedProfile?.id) {
+        const { error: notificationError } = await adminDB.from('notifications').insert({
+          user_id: invitedProfile.id,
+          type: 'group_invite',
+          title: 'Invitacion a grupo',
+          message: `${user.name} te invito al grupo ${group.nombre}.`,
+          metadata: { group_id: group.id, group_name: group.nombre, invited_by: userId },
+          read: false,
+        });
+        if (notificationError) {
+          console.warn("No se pudo guardar notifications:", notificationError.message);
+        }
+      }
+    }
+
+    return { success: true, data: group, mensaje: args.invitee_email ? "Grupo creado e invitacion registrada." : "Grupo creado." };
   } catch (error: any) {
     console.error("Error en createGroup:", error.message);
     return { success: false, error: error.message };
+  }
+}
+
+export async function listGroups() {
+  try {
+    const user = await getLukasUser();
+    const ensuredProfile = await ensureProfile(user);
+    const userId = ensuredProfile?.id || user.id;
+
+    const adminDB = createAdminClient();
+    const { data: memberships, error: membershipError } = await adminDB
+      .from('group_members')
+      .select('rol, groups(*)')
+      .eq('user_id', userId)
+      .limit(25);
+
+    if (membershipError) throw membershipError;
+
+    return {
+      success: true,
+      data: (memberships || []).map((row: any) => ({
+        ...(Array.isArray(row.groups) ? row.groups[0] : row.groups),
+        rol: row.rol,
+      })).filter(Boolean),
+    };
+  } catch (error: any) {
+    console.error("Error en listGroups:", error.message);
+    return { success: false, error: error.message, data: [] };
   }
 }
