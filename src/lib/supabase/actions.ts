@@ -2,7 +2,6 @@
 
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
-
 import { auth } from '@clerk/nextjs/server'
 
 // Generic helper to get a Supabase server client inside Server Actions/Routes
@@ -10,7 +9,6 @@ export async function createClient() {
   const cookieStore = await cookies()
   const { userId } = await auth();
 
-  // Usamos el SERVICE ROLE KEY para evadir el RLS en el MVP
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -26,10 +24,7 @@ export async function createClient() {
   return supabase;
 }
 
-// ----------------------------------------------------------------------
-// Helper: obtener usuario autenticado. Lanza si no hay sesión.
-// Usar en todas las Server Actions que requieren autenticación.
-// ----------------------------------------------------------------------
+// Helper: obtener usuario autenticado.
 export async function getAuthenticatedUser() {
   const { userId } = await auth();
   const supabase = await createClient();
@@ -38,8 +33,6 @@ export async function getAuthenticatedUser() {
     throw new Error('Unauthorized');
   }
 
-  // Buscamos el perfil real por el ID de Clerk
-  // NOTA: Asegúrate de añadir la columna 'clerk_id' en Supabase.
   const { data: user, error } = await supabase
     .from('profiles')
     .select('*')
@@ -55,9 +48,7 @@ export async function getAuthenticatedUser() {
 }
 
 // ----------------------------------------------------------------------
-// SYSTEM TOOLS FOR THE GPT ASSISTANT
-// Estas funciones son invocadas por el OpenAI Assistant vía tool-calling
-// desde /api/chat. Ahora usan auth real en lugar de dummyUserId.
+// SYSTEM TOOLS FOR THE AI ASSISTANT
 // ----------------------------------------------------------------------
 
 export async function getFinscore() {
@@ -70,12 +61,64 @@ export async function getFinscore() {
     .single()
 
   if (error || !data) {
-    return { finScore: 0, mensaje: "Uy parcero, no pude leer tu score. Revisa tu conexión." }
+    return { finScore: 0, mensaje: "No logré sincronizar tu salud financiera actual." }
   }
 
   return {
     finScore: data.finscore_actual,
-    mensaje: `Tu FinScore actual es ${data.finscore_actual}. Vas bien pero cuidado con esas saliditas de fin de semana.`
+    mensaje: `Tu nivel de salud financiera es de ${data.finscore_actual} puntos. Mantener la consistencia es clave.`
+  }
+}
+
+export async function addTransaction(args: { 
+  monto: number, 
+  descripcion: string, 
+  tipo: 'gasto' | 'ingreso',
+  categoria?: string,
+  es_gasto_hormiga?: boolean
+}) {
+  const { supabase, user } = await getAuthenticatedUser()
+
+  // Calcular impacto en FinScore
+  let impacto = 0;
+  if (args.tipo === 'gasto') {
+    impacto = args.es_gasto_hormiga 
+      ? -Math.max(1, Math.floor(args.monto / 5000)) 
+      : -Math.max(1, Math.floor(args.monto / 10000));
+  } else {
+    impacto = Math.max(1, Math.floor(args.monto / 100000));
+  }
+
+  // Insertar transacción
+  const { data: tx, error: txError } = await supabase
+    .from('transactions')
+    .insert([
+      {
+        user_id: user.id,
+        tipo: args.tipo,
+        monto: args.monto,
+        descripcion: args.descripcion,
+        categoria: args.categoria || 'Varios',
+        es_gasto_hormiga: args.es_gasto_hormiga || false,
+        metodo_entrada: 'ai'
+      }
+    ])
+    .select()
+
+  if (txError) return { success: false, error: txError.message };
+
+  // Actualizar FinScore dinámicamente
+  const nuevoScore = Math.max(0, Math.min(10000, user.finscore_actual + impacto));
+  await supabase
+    .from('profiles')
+    .update({ finscore_actual: nuevoScore })
+    .eq('id', user.id);
+
+  return {
+    success: true,
+    impactoFinScore: impacto,
+    nuevoScore,
+    mensaje: `Entendido. He registrado ${args.descripcion} por $${args.monto}. Tu salud financiera ha sido ajustada por ${impacto} puntos.`
   }
 }
 
@@ -96,46 +139,53 @@ export async function createMeta(args: { nombre: string, monto: number }) {
     ])
     .select()
 
-  if (error) {
-    console.error('Error creating meta:', error)
-    return { success: false, error: error.message }
-  }
+  if (error) return { success: false, error: error.message };
 
   return {
     success: true,
     meta: data?.[0],
-    mensaje: `Listo el pollo, meta '${args.nombre}' creada con un objetivo de $${args.monto}. ¡A ahorrar pues!`
+    mensaje: `He configurado tu nueva meta: '${args.nombre}' con un objetivo de $${args.monto}. Comenzaremos a monitorear tu progreso.`
   }
 }
 
-export async function addGastoHormiga(args: { monto: number, descripcion: string }) {
+// Weekly Reflection Engine (Simplified for V1)
+export async function getWeeklyReflection() {
   const { supabase, user } = await getAuthenticatedUser()
 
-  // -1 punto por cada $5.000 gastados en hormigas.
-  const impacto = Math.max(1, Math.floor(args.monto / 5000))
+  // Obtener transacciones de los últimos 7 días
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-  const { data, error } = await supabase
+  const { data: transactions, error } = await supabase
     .from('transactions')
-    .insert([
-      {
-        user_id: user.id,
-        tipo: 'gasto',
-        monto: args.monto,
-        descripcion: args.descripcion,
-        es_gasto_hormiga: true,
-        metodo_entrada: 'ai'
-      }
-    ])
-    .select()
+    .select('*')
+    .eq('user_id', user.id)
+    .gte('created_at', sevenDaysAgo.toISOString());
 
-  if (error) {
-    console.error('Error adding gasto:', error)
-    return { success: false, error: error.message }
+  if (error || !transactions) return { insight: "Necesito más datos para generar una reflexión significativa." };
+
+  const totalGasto = transactions
+    .filter(t => t.tipo === 'gasto')
+    .reduce((sum, t) => sum + t.monto, 0);
+
+  const hormigaCount = transactions.filter(t => t.es_gasto_hormiga).length;
+
+  // Generar insight basado en datos reales
+  let insight = "Tu semana ha sido estable.";
+  let recomendacion = "Mantén el ritmo de registro para detectar patrones.";
+
+  if (hormigaCount > 3) {
+    insight = `He detectado ${hormigaCount} gastos hormiga esta semana.`;
+    recomendacion = "Pequeños ajustes en consumos diarios podrían acelerar tus metas significativamente.";
+  } else if (totalGasto > 500000) {
+    insight = "Esta semana tu volumen de gasto fue superior al promedio.";
+    recomendacion = "Revisar las categorías de mayor impacto te dará mayor claridad estratégica.";
   }
 
   return {
-    success: true,
-    impactoFinScore: -impacto,
-    mensaje: `Uy zona... Registré un gasto hormiga de $${args.monto} por '${args.descripcion}'. Esto te baja el FinScore en ${impacto} puntos.`
+    insight,
+    positivo: "Tu racha de registro demuestra una alta consciencia financiera.",
+    recomendacion,
+    meta_progreso: "Estás en camino a cumplir tu meta principal."
   }
 }
