@@ -31,8 +31,8 @@ export default function HomeView({ onOpenReflection }: { onOpenReflection?: () =
 
   const nudges = [
     "Tu consistencia está fortaleciendo tu salud financiera.",
-    "He notado un patrón positivo en tus ahorros. Sigamos así.",
-    "Tu disciplina actual es la base de tu libertad futura."
+    "He detectado un patrón de ahorro positivo basado en tus últimos 14 días.",
+    "Tu disciplina actual es la base de tu libertad futura. Sistemas estables."
   ];
 
   useEffect(() => {
@@ -44,7 +44,6 @@ export default function HomeView({ onOpenReflection }: { onOpenReflection?: () =
       })
       .catch(() => setLoading(false));
 
-    // Slowed down for calm intelligence
     const interval = setInterval(() => {
       setCurrentNudge(prev => (prev + 1) % nudges.length);
     }, 30000);
@@ -62,14 +61,17 @@ export default function HomeView({ onOpenReflection }: { onOpenReflection?: () =
       transition={{ duration: 1.2 }}
       className="flex flex-col p-8 pb-40 max-w-lg mx-auto"
     >
-      {/* Calm Header */}
+      {/* Trust-Focused Header */}
       <div className="flex justify-between items-start mb-14 pt-10">
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1.5, ease: [0.22, 1, 0.36, 1] }}
         >
-          <p className="text-white/20 text-[9px] font-black uppercase tracking-[0.6em] mb-4">Sistemas en Calma</p>
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-1.5 h-1.5 rounded-full bg-[#00ff9d] opacity-40 shadow-[0_0_8px_#00ff9d]" />
+            <p className="text-white/20 text-[9px] font-black uppercase tracking-[0.5em]">Inteligencia Privada & Cifrada</p>
+          </div>
           <h1 className="text-white font-black text-4xl tracking-tight leading-tight">
             Hola, <span className="text-premium">{name}</span>.
           </h1>
@@ -83,7 +85,7 @@ export default function HomeView({ onOpenReflection }: { onOpenReflection?: () =
         </motion.div>
       </div>
 
-      {/* Strategic Nudge - Intentional Scarcity */}
+      {/* Strategic Insight - Explainable Reasoning */}
       <AnimatePresence mode="wait">
         <motion.div 
           key={currentNudge}
@@ -91,19 +93,24 @@ export default function HomeView({ onOpenReflection }: { onOpenReflection?: () =
           animate={{ opacity: 1, filter: "blur(0px)" }}
           exit={{ opacity: 0, filter: "blur(8px)" }}
           transition={{ duration: 1 }}
-          className="mb-14 px-8 py-5 glass-elite rounded-[2.5rem] border-white/5 flex items-center gap-6"
+          className="mb-14 px-8 py-6 glass-elite rounded-[2.5rem] border-white/5 flex flex-col gap-3 relative overflow-hidden"
         >
-          <div className="w-1.5 h-1.5 rounded-full bg-[#D8A93F]/20" />
-          <p className="text-white/40 text-[12px] font-medium leading-relaxed tracking-tight">
-            {nudges[currentNudge]}
-          </p>
+          <div className="flex items-center gap-4">
+            <div className="w-1.5 h-1.5 rounded-full bg-[#D8A93F]/20" />
+            <p className="text-white/50 text-[12px] font-medium leading-relaxed tracking-tight">
+              {nudges[currentNudge]}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 mt-1 ml-5">
+             <span className="text-[8px] text-white/10 font-black uppercase tracking-[0.3em]">Basado en tendencias recientes</span>
+          </div>
         </motion.div>
       </AnimatePresence>
 
-      {/* Iconic FinScore - Slower Animation */}
+      {/* Iconic FinScore - Trust & Clarity */}
       <div className="relative mb-16 px-2">
         <motion.div 
-          className="glass-elite rounded-[4rem] p-14 flex flex-col items-center justify-center border-white/5 relative overflow-hidden shadow-2xl inner-highlight"
+          className="glass-elite rounded-[4.5rem] p-14 flex flex-col items-center justify-center border-white/5 relative overflow-hidden shadow-2xl inner-highlight"
         >
           <div className="relative w-full aspect-square max-w-[240px] flex items-center justify-center">
             <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
@@ -125,55 +132,53 @@ export default function HomeView({ onOpenReflection }: { onOpenReflection?: () =
             </svg>
             
             <div className="absolute flex flex-col items-center text-center">
-              <span className="text-white/10 text-[8px] font-black uppercase tracking-[0.6em] mb-3">Índice de Salud</span>
+              <span className="text-white/10 text-[8px] font-black uppercase tracking-[0.6em] mb-3">Salud Financiera</span>
               <span className="text-white text-7xl font-black tracking-tighter leading-none text-premium">
                 <AnimatedNumber value={score} />
               </span>
-              <div className="mt-8 flex items-center gap-2">
+              <div className="mt-8 flex items-center gap-3">
                 <div className="w-1 h-1 rounded-full bg-[#00ff9d] opacity-40" />
-                <p className="text-white/20 text-[9px] font-black uppercase tracking-[0.4em]">Optimización Activa</p>
+                <p className="text-white/20 text-[9px] font-black uppercase tracking-[0.4em]">Análisis Transparente</p>
               </div>
             </div>
           </div>
         </motion.div>
       </div>
 
-      {/* Minimal Strategic Grid */}
+      {/* Measured Grid - Calm Alerts */}
       <div className="grid grid-cols-2 gap-8">
         <div className="glass-elite rounded-[3rem] p-10 border-white/5 inner-highlight">
-          <p className="text-[9px] font-black text-white/10 mb-6 uppercase tracking-[0.5em]">Balance</p>
+          <p className="text-[9px] font-black text-white/10 mb-6 uppercase tracking-[0.5em]">Presupuesto</p>
           <div className="flex items-baseline gap-2 mb-4">
             <span className="text-3xl font-black text-white">75%</span>
           </div>
-          <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
-            <motion.div animate={{ width: "75%" }} className="h-full bg-white/10" />
-          </div>
+          <p className="text-[9px] text-white/20 font-black uppercase tracking-widest leading-none">Ejecución Estable</p>
         </div>
 
         <div 
           onClick={() => setShowModal(true)}
           className="glass-elite rounded-[3rem] p-10 border-white/5 inner-highlight cursor-pointer group"
         >
-          <p className="text-[9px] font-black text-white/10 mb-6 uppercase tracking-[0.5em]">Alertas</p>
+          <p className="text-[9px] font-black text-white/10 mb-6 uppercase tracking-[0.5em]">Estado</p>
           <div className="flex items-center gap-3 mb-4">
-            <span className="text-2xl font-black text-white group-hover:text-[#ff3b3b] transition-colors">3</span>
+            <span className="text-2xl font-black text-white group-hover:text-white/60 transition-colors">Normal</span>
           </div>
-          <div className="w-1.5 h-1.5 bg-[#ff3b3b]/30 rounded-full" />
+          <p className="text-[9px] text-white/20 font-black uppercase tracking-widest leading-none">3 Ajustes Sugeridos</p>
         </div>
       </div>
 
-      {/* Silent Consistency Bar */}
+      {/* Trust-Centered Consistency Bar */}
       <div 
         onClick={onOpenReflection}
-        className="mt-10 glass-elite rounded-[3rem] p-8 border-white/5 flex items-center justify-between group cursor-pointer hover:bg-white/[0.01] transition-all"
+        className="mt-10 glass-elite rounded-[3.5rem] p-10 border-white/5 flex items-center justify-between group cursor-pointer hover:bg-white/[0.01] transition-all"
       >
         <div className="flex items-center gap-8">
-          <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center grayscale opacity-30 group-hover:grayscale-0 group-hover:opacity-100 transition-all">
-            🔥
+          <div className="w-14 h-14 rounded-2xl bg-white/[0.02] flex items-center justify-center opacity-40 group-hover:opacity-100 transition-all border border-white/5">
+            📊
           </div>
           <div>
-            <h4 className="text-white font-black text-lg tracking-tight leading-none mb-1">{racha} Días de Consistencia</h4>
-            <p className="text-white/10 text-[9px] font-bold uppercase tracking-[0.4em]">Reflexión semanal disponible</p>
+            <h4 className="text-white font-black text-xl tracking-tight leading-none mb-2">Reflexión de Comportamiento</h4>
+            <p className="text-white/10 text-[9px] font-bold uppercase tracking-[0.4em]">Basado en tu actividad semanal</p>
           </div>
         </div>
         <div className="text-white/5 group-hover:text-white/20 transition-colors">→</div>
