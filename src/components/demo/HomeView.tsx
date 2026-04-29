@@ -14,7 +14,7 @@ function AnimatedNumber({ value }: { value: number }) {
   const [displayValue, setDisplayValue] = useState(0);
   useEffect(() => {
     const controls = animate(0, value, {
-      duration: 2.5,
+      duration: 3,
       ease: [0.22, 1, 0.36, 1],
       onUpdate: (v) => setDisplayValue(Math.round(v))
     });
@@ -31,10 +31,7 @@ export default function HomeView({ onOpenReflection }: { onOpenReflection?: () =
 
   const nudges = [
     "Tu consistencia está fortaleciendo tu salud financiera.",
-    "He notado un patrón positivo en tus ahorros esta semana.",
-    "Mantener esta racha de {racha} días está optimizando tu FinScore.",
-    "Tu meta de viaje está progresando según lo planeado.",
-    "He detectado un ligero aumento en gastos variables. ¿Quieres revisarlo?",
+    "He notado un patrón positivo en tus ahorros. Sigamos así.",
     "Tu disciplina actual es la base de tu libertad futura."
   ];
 
@@ -47,9 +44,10 @@ export default function HomeView({ onOpenReflection }: { onOpenReflection?: () =
       })
       .catch(() => setLoading(false));
 
+    // Slowed down for calm intelligence
     const interval = setInterval(() => {
       setCurrentNudge(prev => (prev + 1) % nudges.length);
-    }, 10000);
+    }, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -57,133 +55,128 @@ export default function HomeView({ onOpenReflection }: { onOpenReflection?: () =
   const score = profile?.finscore_actual || 0;
   const racha = profile?.racha_actual_dias || 0;
 
-  const displayNudge = nudges[currentNudge].replace("{racha}", racha.toString());
-
   return (
     <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 1.2 }}
       className="flex flex-col p-8 pb-40 max-w-lg mx-auto"
     >
-      {/* Sophisticated Header */}
-      <div className="flex justify-between items-start mb-10 pt-6">
+      {/* Calm Header */}
+      <div className="flex justify-between items-start mb-14 pt-10">
         <motion.div
-          initial={{ opacity: 0, y: -10 }}
+          initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: 1.5, ease: [0.22, 1, 0.36, 1] }}
         >
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-1.5 h-1.5 rounded-full bg-[#00ff9d] opacity-50" />
-            <p className="text-white/30 text-[10px] font-black uppercase tracking-[0.4em]">Sistemas Activos</p>
-          </div>
+          <p className="text-white/20 text-[9px] font-black uppercase tracking-[0.6em] mb-4">Sistemas en Calma</p>
           <h1 className="text-white font-black text-4xl tracking-tight leading-tight">
-            Hola, <span className="text-premium">{name}</span>.<br/>
-            <span className="text-white/30 text-lg font-bold tracking-tight">Tu estado financiero es estable.</span>
+            Hola, <span className="text-premium">{name}</span>.
           </h1>
         </motion.div>
 
         <motion.div 
-          whileHover={{ scale: 1.05 }}
-          className="w-14 h-14 rounded-2xl border border-white/5 glass-elite flex items-center justify-center overflow-hidden inner-highlight"
+          whileHover={{ scale: 1.02 }}
+          className="w-14 h-14 rounded-2xl border border-white/5 glass-elite flex items-center justify-center overflow-hidden"
         >
           <UserButton appearance={{ elements: { avatarBox: "w-10 h-10" } }} />
         </motion.div>
       </div>
 
-      {/* Ambient AI Nudge */}
+      {/* Strategic Nudge - Intentional Scarcity */}
       <AnimatePresence mode="wait">
         <motion.div 
           key={currentNudge}
-          initial={{ opacity: 0, filter: "blur(10px)" }}
+          initial={{ opacity: 0, filter: "blur(8px)" }}
           animate={{ opacity: 1, filter: "blur(0px)" }}
-          exit={{ opacity: 0, filter: "blur(10px)" }}
-          className="mb-12 px-6 py-4 glass-elite rounded-[2rem] border-white/5 flex items-center gap-5"
+          exit={{ opacity: 0, filter: "blur(8px)" }}
+          transition={{ duration: 1 }}
+          className="mb-14 px-8 py-5 glass-elite rounded-[2.5rem] border-white/5 flex items-center gap-6"
         >
-          <div className="w-2 h-2 rounded-full bg-[#D8A93F]/30" />
-          <p className="text-white/60 text-[13px] font-medium leading-relaxed tracking-tight">
-            {displayNudge}
+          <div className="w-1.5 h-1.5 rounded-full bg-[#D8A93F]/20" />
+          <p className="text-white/40 text-[12px] font-medium leading-relaxed tracking-tight">
+            {nudges[currentNudge]}
           </p>
         </motion.div>
       </AnimatePresence>
 
-      {/* Iconic FinScore Centerpiece */}
-      <div className="relative mb-14 px-2">
+      {/* Iconic FinScore - Slower Animation */}
+      <div className="relative mb-16 px-2">
         <motion.div 
-          className="glass-elite rounded-[3.5rem] p-12 flex flex-col items-center justify-center border-white/5 relative overflow-hidden shadow-[0_60px_100px_rgba(0,0,0,0.9)] inner-highlight"
+          className="glass-elite rounded-[4rem] p-14 flex flex-col items-center justify-center border-white/5 relative overflow-hidden shadow-2xl inner-highlight"
         >
-          <div className="absolute inset-0 bg-gradient-to-b from-white/[0.02] to-transparent pointer-events-none" />
-          
-          <div className="relative w-full aspect-square max-w-[220px] flex items-center justify-center">
+          <div className="relative w-full aspect-square max-w-[240px] flex items-center justify-center">
             <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
-              <circle cx="50" cy="50" r="46" fill="none" stroke="rgba(255,255,255,0.02)" strokeWidth="0.5" />
-              <circle cx="50" cy="50" r="40" fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="8" strokeLinecap="round" />
+              <circle cx="50" cy="50" r="46" fill="none" stroke="rgba(255,255,255,0.01)" strokeWidth="0.5" />
+              <circle cx="50" cy="50" r="42" fill="none" stroke="rgba(255,255,255,0.02)" strokeWidth="6" strokeLinecap="round" />
               
               <motion.circle
-                cx="50" cy="50" r="40"
+                cx="50" cy="50" r="42"
                 fill="none"
                 stroke="#D8A93F"
-                strokeWidth="8"
-                strokeDasharray="251.2"
-                initial={{ strokeDashoffset: 251.2 }}
-                animate={{ strokeDashoffset: 251.2 - (251.2 * (score / 10000)) }}
-                transition={{ duration: 3, ease: [0.22, 1, 0.36, 1], delay: 0.5 }}
+                strokeWidth="6"
+                strokeDasharray="263.8"
+                initial={{ strokeDashoffset: 263.8 }}
+                animate={{ strokeDashoffset: 263.8 - (263.8 * (score / 10000)) }}
+                transition={{ duration: 4, ease: [0.22, 1, 0.36, 1], delay: 0.8 }}
                 strokeLinecap="round"
-                className="drop-shadow-[0_0_12px_rgba(216,169,63,0.3)]"
+                className="drop-shadow-[0_0_15px_rgba(216,169,63,0.15)]"
               />
             </svg>
             
             <div className="absolute flex flex-col items-center text-center">
-              <span className="text-white/20 text-[9px] font-black uppercase tracking-[0.5em] mb-2">FinScore Actual</span>
+              <span className="text-white/10 text-[8px] font-black uppercase tracking-[0.6em] mb-3">Índice de Salud</span>
               <span className="text-white text-7xl font-black tracking-tighter leading-none text-premium">
                 <AnimatedNumber value={score} />
               </span>
-              <p className="text-[#D8A93F]/60 text-[10px] font-black uppercase tracking-[0.3em] mt-6">
-                Nivel de Inteligencia
-              </p>
+              <div className="mt-8 flex items-center gap-2">
+                <div className="w-1 h-1 rounded-full bg-[#00ff9d] opacity-40" />
+                <p className="text-white/20 text-[9px] font-black uppercase tracking-[0.4em]">Optimización Activa</p>
+              </div>
             </div>
           </div>
         </motion.div>
       </div>
 
-      {/* Strategic Grid */}
-      <div className="grid grid-cols-2 gap-6">
-        <div className="glass-elite rounded-[2.5rem] p-8 border-white/5 inner-highlight group">
-          <p className="text-[10px] font-black text-white/20 mb-6 uppercase tracking-[0.3em]">Presupuesto</p>
+      {/* Minimal Strategic Grid */}
+      <div className="grid grid-cols-2 gap-8">
+        <div className="glass-elite rounded-[3rem] p-10 border-white/5 inner-highlight">
+          <p className="text-[9px] font-black text-white/10 mb-6 uppercase tracking-[0.5em]">Balance</p>
           <div className="flex items-baseline gap-2 mb-4">
             <span className="text-3xl font-black text-white">75%</span>
           </div>
-          <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-            <motion.div animate={{ width: "75%" }} className="h-full bg-white/20 group-hover:bg-[#D8A93F] transition-colors" />
+          <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+            <motion.div animate={{ width: "75%" }} className="h-full bg-white/10" />
           </div>
-          <p className="text-[10px] text-white/20 font-bold mt-4 uppercase tracking-widest">Ejecución Óptima</p>
         </div>
 
         <div 
           onClick={() => setShowModal(true)}
-          className="glass-elite rounded-[2.5rem] p-8 border-white/5 inner-highlight cursor-pointer group"
+          className="glass-elite rounded-[3rem] p-10 border-white/5 inner-highlight cursor-pointer group"
         >
-          <p className="text-[10px] font-black text-white/20 mb-6 uppercase tracking-[0.3em]">Alertas</p>
+          <p className="text-[9px] font-black text-white/10 mb-6 uppercase tracking-[0.5em]">Alertas</p>
           <div className="flex items-center gap-3 mb-4">
-            <span className="text-2xl font-black text-white">3</span>
-            <div className="w-2 h-2 bg-[#ff3b3b] rounded-full animate-pulse" />
+            <span className="text-2xl font-black text-white group-hover:text-[#ff3b3b] transition-colors">3</span>
           </div>
-          <p className="text-[10px] text-[#ff3b3b]/60 font-black uppercase tracking-widest">Revisión Pendiente</p>
+          <div className="w-1.5 h-1.5 bg-[#ff3b3b]/30 rounded-full" />
         </div>
       </div>
 
-      {/* Consistency Bar */}
+      {/* Silent Consistency Bar */}
       <div 
         onClick={onOpenReflection}
-        className="mt-8 glass-elite rounded-3xl p-6 border-white/5 flex items-center justify-between group relative overflow-hidden cursor-pointer"
+        className="mt-10 glass-elite rounded-[3rem] p-8 border-white/5 flex items-center justify-between group cursor-pointer hover:bg-white/[0.01] transition-all"
       >
-        <div className="flex items-center gap-6">
-          <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center text-2xl shadow-inner group-hover:text-[#D8A93F] transition-colors">
+        <div className="flex items-center gap-8">
+          <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center grayscale opacity-30 group-hover:grayscale-0 group-hover:opacity-100 transition-all">
             🔥
           </div>
           <div>
-            <h4 className="text-white font-black text-lg tracking-tight leading-none mb-1">{racha} Días de Disciplina</h4>
-            <p className="text-white/20 text-[10px] font-bold uppercase tracking-[0.2em]">Consistencia detectada</p>
+            <h4 className="text-white font-black text-lg tracking-tight leading-none mb-1">{racha} Días de Consistencia</h4>
+            <p className="text-white/10 text-[9px] font-bold uppercase tracking-[0.4em]">Reflexión semanal disponible</p>
           </div>
         </div>
-        <div className="w-2 h-2 rounded-full bg-[#D8A93F] opacity-20" />
+        <div className="text-white/5 group-hover:text-white/20 transition-colors">→</div>
       </div>
 
       <AnimatePresence>
