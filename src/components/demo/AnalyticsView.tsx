@@ -1,13 +1,17 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
+import dynamic from "next/dynamic";
+
+// Dynamic import for D3 component to avoid SSR issues
+const LeakBusterGraph = dynamic(() => import("../dashboard/LeakBusterGraph"), { ssr: false });
 
 export default function AnalyticsView() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/budgets/summary')
+    fetch('/api/leak-buster/graph')
       .then(res => res.json())
       .then(json => {
         setData(json.data);
@@ -15,12 +19,6 @@ export default function AnalyticsView() {
       })
       .catch(() => setLoading(false));
   }, []);
-
-  const categories = [
-    { name: "Alimentación & Gastos Diarios", percent: 45, color: "#D8A93F", comment: "Categoría de alta frecuencia detectada." },
-    { name: "Servicios & Movilidad", percent: 20, color: "#8b5cf6", comment: "Gastos fijos recurrentes validados." },
-    { name: "Entretenimiento & Ocio", percent: 15, color: "#00ff9d", comment: "Variabilidad observada en el último mes." },
-  ];
 
   return (
     <motion.div 
@@ -30,11 +28,31 @@ export default function AnalyticsView() {
       className="p-8 pb-40 max-w-lg mx-auto"
     >
       <header className="mb-14 pt-10">
-        <p className="text-white/20 text-[10px] font-black uppercase tracking-[0.5em] mb-4">Claridad Financiera</p>
+        <p className="text-white/20 text-[10px] font-black uppercase tracking-[0.5em] mb-4">Análisis de Fugas</p>
         <h1 className="text-white font-black text-4xl tracking-tight leading-none text-premium">
-          Análisis de <span className="text-[#D8A93F]">Tendencias</span>
+          Leak <span className="text-[#D8A93F]">Buster</span>
         </h1>
       </header>
+
+      {/* Main Graph Visualization */}
+      <div className="mb-14">
+        {loading ? (
+          <div className="w-full aspect-square glass-elite rounded-[4rem] border-white/5 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-6 opacity-20">
+              <div className="w-8 h-8 rounded-full border-2 border-white/20 border-t-white animate-spin" />
+              <p className="text-[10px] font-black uppercase tracking-[0.4em]">Mapeando Gastos...</p>
+            </div>
+          </div>
+        ) : (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 1 }}
+          >
+            <LeakBusterGraph nodes={data?.nodes} links={data?.links} />
+          </motion.div>
+        )}
+      </div>
 
       {/* Transparent Strategic Insight */}
       <motion.div 
@@ -45,81 +63,37 @@ export default function AnalyticsView() {
         <div className="flex flex-col gap-8">
           <div className="flex items-center gap-6">
             <div className="w-10 h-10 rounded-2xl bg-white/[0.02] flex items-center justify-center text-xl grayscale opacity-30 border border-white/5">🛰️</div>
-            <h3 className="text-white/40 text-[10px] font-black uppercase tracking-[0.4em]">Perspectiva Basada en Datos</h3>
+            <h3 className="text-white/40 text-[10px] font-black uppercase tracking-[0.4em]">Análisis de Comportamiento</h3>
           </div>
           
           <p className="text-white/80 text-[16px] leading-relaxed font-medium">
-            "He identificado una oportunidad de optimización del 12% en tu presupuesto mensual. Esta recomendación se basa en la comparación de tus gastos recurrentes frente a los objetivos de ahorro que definiste."
+            "He detectado {data?.summary?.fugas_detectadas || 0} fugas críticas en tu flujo de caja. Los nodos en dorado representan micro-transacciones que, sumadas, están restando $${(data?.summary?.monto_en_fugas || 0).toLocaleString()} a tu capacidad de ahorro este mes."
           </p>
           
           <div className="pt-6 border-t border-white/[0.03]">
-            <p className="text-[9px] text-white/10 font-black uppercase tracking-[0.3em]">Fuente: Análisis de patrones de los últimos 30 días</p>
+            <p className="text-[9px] text-white/10 font-black uppercase tracking-[0.3em]">Basado en el análisis de proximidad y frecuencia de gastos</p>
           </div>
         </div>
       </motion.div>
 
-      {/* Explainable Breakdown Section */}
-      <div className="glass-elite rounded-[4rem] p-12 mb-12 border-white/5 relative overflow-hidden shadow-2xl inner-highlight">
-        <div className="flex justify-between items-center mb-14">
-          <h3 className="text-white/20 text-[10px] font-black uppercase tracking-[0.5em]">Distribución Validada</h3>
-          <div className="flex items-center gap-2">
-             <div className="w-1.5 h-1.5 rounded-full bg-[#00ff9d] opacity-20" />
-             <span className="text-[8px] text-white/20 font-black uppercase tracking-widest">Sistemas Sincronizados</span>
-          </div>
-        </div>
-        
-        <div className="space-y-14">
-          {loading ? (
-             <div className="animate-pulse space-y-8">
-                {[1,2,3].map(i => <div key={i} className="h-4 bg-white/5 w-full rounded-full" />)}
-             </div>
-          ) : (
-            categories.map((cat, idx) => (
-              <div key={cat.name} className="group/item">
-                <div className="flex justify-between items-end mb-5">
-                  <div>
-                    <span className="text-base font-black text-white/90 block leading-tight mb-2">{cat.name}</span>
-                    <span className="text-[9px] text-white/20 font-bold uppercase tracking-widest block">{cat.comment}</span>
-                  </div>
-                  <span className="text-xl font-black text-white">{cat.percent}%</span>
-                </div>
-                <div className="h-1.5 w-full bg-white/[0.03] rounded-full overflow-hidden relative">
-                  <motion.div 
-                    initial={{ width: 0 }} 
-                    animate={{ width: `${cat.percent}%` }} 
-                    transition={{ delay: 0.5 + idx * 0.1, duration: 2, ease: [0.22, 1, 0.36, 1] }}
-                    className="h-full rounded-full"
-                    style={{ backgroundColor: cat.color }}
-                  />
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-        
-        <div className="mt-12 pt-10 border-t border-white/[0.03]">
-           <p className="text-[8px] text-white/10 font-black uppercase tracking-[0.4em] leading-relaxed">
-             * Los porcentajes se calculan en tiempo real basándose en transacciones verificadas y categorizadas automáticamente por el sistema de inteligencia.
-           </p>
-        </div>
-      </div>
-
       {/* Precision Metrics */}
       <div className="grid grid-cols-2 gap-8">
         <div className="glass-elite rounded-[3rem] p-10 border-white/5 text-left inner-highlight">
-          <p className="text-[9px] text-white/10 uppercase font-black tracking-[0.4em] mb-5">Gasto Máximo</p>
-          <p className="text-white font-black text-2xl tracking-tighter">$1.240.000</p>
+          <p className="text-[9px] text-white/10 uppercase font-black tracking-[0.4em] mb-5">Fugas Totales</p>
+          <p className="text-white font-black text-2xl tracking-tighter">
+            ${(data?.summary?.monto_en_fugas || 0).toLocaleString()}
+          </p>
           <div className="mt-6 flex items-center gap-3">
-            <div className="w-1.5 h-1.5 rounded-full bg-white/10" />
-            <span className="text-[8px] text-white/10 font-black uppercase tracking-[0.3em]">Registro Verificado</span>
+            <div className="w-1.5 h-1.5 rounded-full bg-[#D8A93F]/20" />
+            <span className="text-[8px] text-white/10 font-black uppercase tracking-[0.3em]">Impacto Negativo</span>
           </div>
         </div>
         <div className="glass-elite rounded-[3rem] p-10 border-white/5 text-left inner-highlight">
-          <p className="text-[9px] text-white/10 uppercase font-black tracking-[0.4em] mb-5">Ahorro Estimado</p>
-          <p className="text-[#00ff9d]/80 font-black text-2xl tracking-tighter">$352.000</p>
+          <p className="text-[9px] text-white/10 uppercase font-black tracking-[0.4em] mb-5">Eficiencia</p>
+          <p className="text-[#00ff9d]/80 font-black text-2xl tracking-tighter">82%</p>
           <div className="mt-6 flex items-center gap-3">
             <div className="w-1.5 h-1.5 rounded-full bg-[#00ff9d]/20" />
-            <span className="text-[8px] text-white/10 font-black uppercase tracking-[0.3em]">Proyección Segura</span>
+            <span className="text-[8px] text-white/10 font-black uppercase tracking-[0.3em]">Ritmo de Calma</span>
           </div>
         </div>
       </div>

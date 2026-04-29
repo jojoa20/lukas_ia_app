@@ -3,11 +3,13 @@ import React, { useState, useEffect } from "react";
 import AlertModal from "./AlertModal";
 import { motion, animate, AnimatePresence } from "framer-motion";
 import { UserButton } from "@clerk/nextjs";
+import { getSystemContext } from "@/lib/supabase/actions";
 
-interface Profile {
-  full_name: string;
-  finscore_actual: number;
-  racha_actual_dias: number;
+interface SystemContext {
+  score: number;
+  leaks: { count: number; amount: number; recent: string[] };
+  meta: { nombre: string; progreso: number } | null;
+  user_name: string;
 }
 
 function AnimatedNumber({ value }: { value: number }) {
@@ -24,35 +26,37 @@ function AnimatedNumber({ value }: { value: number }) {
 }
 
 export default function HomeView({ onOpenReflection }: { onOpenReflection?: () => void }) {
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [context, setContext] = useState<SystemContext | null>(null);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [currentNudge, setCurrentNudge] = useState(0);
 
-  const nudges = [
-    "Tu consistencia está fortaleciendo tu salud financiera.",
-    "He detectado un patrón de ahorro positivo basado en tus últimos 14 días.",
-    "Tu disciplina actual es la base de tu libertad futura. Sistemas estables."
-  ];
-
   useEffect(() => {
-    fetch('/api/profile')
-      .then(res => res.json())
-      .then(json => {
-        if (json.data) setProfile(json.data);
+    getSystemContext()
+      .then(res => {
+        setContext(res as any);
         setLoading(false);
       })
       .catch(() => setLoading(false));
 
     const interval = setInterval(() => {
-      setCurrentNudge(prev => (prev + 1) % nudges.length);
-    }, 30000);
+      setCurrentNudge(prev => (prev + 1) % 3);
+    }, 15000);
     return () => clearInterval(interval);
   }, []);
 
-  const name = profile?.full_name?.split(' ')[0] || "Hola";
-  const score = profile?.finscore_actual || 0;
-  const racha = profile?.racha_actual_dias || 0;
+  const nudges = [
+    context?.leaks.count && context.leaks.count > 0 
+      ? `He detectado ${context.leaks.count} fugas de capital esta semana. ¿Hablamos de esto?` 
+      : "Tu ritmo de gasto demuestra una consciencia excepcional hoy.",
+    context?.meta 
+      ? `Tu meta '${context.meta.nombre}' está al ${context.meta.progreso.toFixed(0)}%. Vas por buen camino.`
+      : "No tienes metas activas. Definir una intención daría mayor propósito a tu capital.",
+    "Tu FinScore actual es un reflejo de tu disciplina comportamental."
+  ];
+
+  const name = context?.user_name?.split(' ')[0] || "Hola";
+  const score = context?.score || 0;
 
   return (
     <motion.div 
@@ -61,7 +65,7 @@ export default function HomeView({ onOpenReflection }: { onOpenReflection?: () =
       transition={{ duration: 1.2 }}
       className="flex flex-col p-8 pb-40 max-w-lg mx-auto"
     >
-      {/* Trust-Focused Header */}
+      {/* System Cohesion Header */}
       <div className="flex justify-between items-start mb-14 pt-10">
         <motion.div
           initial={{ opacity: 0, y: 10 }}
@@ -70,7 +74,7 @@ export default function HomeView({ onOpenReflection }: { onOpenReflection?: () =
         >
           <div className="flex items-center gap-2 mb-4">
             <div className="w-1.5 h-1.5 rounded-full bg-[#00ff9d] opacity-40 shadow-[0_0_8px_#00ff9d]" />
-            <p className="text-white/20 text-[9px] font-black uppercase tracking-[0.5em]">Inteligencia Privada & Cifrada</p>
+            <p className="text-white/20 text-[9px] font-black uppercase tracking-[0.5em]">Inteligencia Sistémica Activa</p>
           </div>
           <h1 className="text-white font-black text-4xl tracking-tight leading-tight">
             Hola, <span className="text-premium">{name}</span>.
@@ -85,7 +89,7 @@ export default function HomeView({ onOpenReflection }: { onOpenReflection?: () =
         </motion.div>
       </div>
 
-      {/* Strategic Insight - Explainable Reasoning */}
+      {/* Insight Continuity - Context-Aware Nudges */}
       <AnimatePresence mode="wait">
         <motion.div 
           key={currentNudge}
@@ -102,12 +106,12 @@ export default function HomeView({ onOpenReflection }: { onOpenReflection?: () =
             </p>
           </div>
           <div className="flex items-center gap-2 mt-1 ml-5">
-             <span className="text-[8px] text-white/10 font-black uppercase tracking-[0.3em]">Basado en tendencias recientes</span>
+             <span className="text-[8px] text-white/10 font-black uppercase tracking-[0.3em]">Memoria Inteligente</span>
           </div>
         </motion.div>
       </AnimatePresence>
 
-      {/* Iconic FinScore - Trust & Clarity */}
+      {/* Iconic FinScore - Systemic Health Dial */}
       <div className="relative mb-16 px-2">
         <motion.div 
           className="glass-elite rounded-[4.5rem] p-14 flex flex-col items-center justify-center border-white/5 relative overflow-hidden shadow-2xl inner-highlight"
@@ -132,42 +136,48 @@ export default function HomeView({ onOpenReflection }: { onOpenReflection?: () =
             </svg>
             
             <div className="absolute flex flex-col items-center text-center">
-              <span className="text-white/10 text-[8px] font-black uppercase tracking-[0.6em] mb-3">Salud Financiera</span>
+              <span className="text-white/10 text-[8px] font-black uppercase tracking-[0.6em] mb-3">Ritmo de Salud</span>
               <span className="text-white text-7xl font-black tracking-tighter leading-none text-premium">
                 <AnimatedNumber value={score} />
               </span>
               <div className="mt-8 flex items-center gap-3">
                 <div className="w-1 h-1 rounded-full bg-[#00ff9d] opacity-40" />
-                <p className="text-white/20 text-[9px] font-black uppercase tracking-[0.4em]">Análisis Transparente</p>
+                <p className="text-white/20 text-[9px] font-black uppercase tracking-[0.4em]">Propagación de Datos</p>
               </div>
             </div>
           </div>
         </motion.div>
       </div>
 
-      {/* Measured Grid - Calm Alerts */}
+      {/* Reduced Silos Grid - Systemic Connections */}
       <div className="grid grid-cols-2 gap-8">
         <div className="glass-elite rounded-[3rem] p-10 border-white/5 inner-highlight">
-          <p className="text-[9px] font-black text-white/10 mb-6 uppercase tracking-[0.5em]">Presupuesto</p>
+          <p className="text-[9px] font-black text-white/10 mb-6 uppercase tracking-[0.5em]">Meta Activa</p>
           <div className="flex items-baseline gap-2 mb-4">
-            <span className="text-3xl font-black text-white">75%</span>
+            <span className="text-3xl font-black text-white">
+              {context?.meta ? `${context.meta.progreso.toFixed(0)}%` : "0%"}
+            </span>
           </div>
-          <p className="text-[9px] text-white/20 font-black uppercase tracking-widest leading-none">Ejecución Estable</p>
+          <p className="text-[9px] text-white/20 font-black uppercase tracking-widest leading-none truncate w-full">
+            {context?.meta?.nombre || "Sin Meta Activa"}
+          </p>
         </div>
 
         <div 
           onClick={() => setShowModal(true)}
           className="glass-elite rounded-[3rem] p-10 border-white/5 inner-highlight cursor-pointer group"
         >
-          <p className="text-[9px] font-black text-white/10 mb-6 uppercase tracking-[0.5em]">Estado</p>
+          <p className="text-[9px] font-black text-white/10 mb-6 uppercase tracking-[0.5em]">Estado de Fugas</p>
           <div className="flex items-center gap-3 mb-4">
-            <span className="text-2xl font-black text-white group-hover:text-white/60 transition-colors">Normal</span>
+            <span className="text-2xl font-black text-white group-hover:text-[#D8A93F] transition-colors">
+              {context?.leaks.count || 0}
+            </span>
           </div>
-          <p className="text-[9px] text-white/20 font-black uppercase tracking-widest leading-none">3 Ajustes Sugeridos</p>
+          <p className="text-[9px] text-white/20 font-black uppercase tracking-widest leading-none">Fugas Detectadas</p>
         </div>
       </div>
 
-      {/* Trust-Centered Consistency Bar */}
+      {/* Narrative Continuity Card */}
       <div 
         onClick={onOpenReflection}
         className="mt-10 glass-elite rounded-[3.5rem] p-10 border-white/5 flex items-center justify-between group cursor-pointer hover:bg-white/[0.01] transition-all"
@@ -177,8 +187,8 @@ export default function HomeView({ onOpenReflection }: { onOpenReflection?: () =
             📊
           </div>
           <div>
-            <h4 className="text-white font-black text-xl tracking-tight leading-none mb-2">Reflexión de Comportamiento</h4>
-            <p className="text-white/10 text-[9px] font-bold uppercase tracking-[0.4em]">Basado en tu actividad semanal</p>
+            <h4 className="text-white font-black text-xl tracking-tight leading-none mb-2">Continuidad del Hábito</h4>
+            <p className="text-white/10 text-[9px] font-bold uppercase tracking-[0.4em]">Explorar tu narrativa financiera</p>
           </div>
         </div>
         <div className="text-white/5 group-hover:text-white/20 transition-colors">→</div>
