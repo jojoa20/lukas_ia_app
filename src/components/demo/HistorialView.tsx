@@ -1,3 +1,4 @@
+"use client";
 import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 
@@ -14,6 +15,7 @@ interface Transaction {
 export default function HistorialView() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [showModal, setShowModal] = useState(false);
   
   // Form state
@@ -21,6 +23,43 @@ export default function HistorialView() {
   const [tipo, setTipo] = useState<'ingreso' | 'gasto'>('gasto');
   const [categoria, setCategoria] = useState("");
   const [descripcion, setDescripcion] = useState("");
+  const [esHormiga, setEsHormiga] = useState(false);
+
+  // Modelo de Detección: Grafo de Frecuencias y Reglas
+  useEffect(() => {
+    if (tipo !== 'gasto' || !monto) {
+      setEsHormiga(false);
+      return;
+    }
+
+    const montoNum = Number(monto);
+    if (montoNum >= 50000) {
+      setEsHormiga(false); // Gastos grandes nunca son hormiga
+      return;
+    }
+
+    const normalizedDesc = descripcion.toLowerCase().trim();
+    const isSuspectCategory = ['alimentacion', 'entretenimiento', 'otros', 'transporte'].includes(categoria);
+
+    // 1. Detección por palabras de impulso explícito
+    const impulseWords = ['cafe', 'café', 'tinto', 'empanada', 'antojo', 'dulce', 'pola', 'helado', 'snack', 'uber', 'rappi'];
+    const hasImpulseWord = impulseWords.some(w => normalizedDesc.includes(w));
+
+    // 2. Análisis del Grafo de Frecuencia (Conexiones pasadas)
+    // Si el usuario ya tiene 2+ gastos similares pequeños, es un hábito (peso alto)
+    const similarPastTxs = transactions.filter(tx =>
+      tx.tipo === 'gasto' &&
+      tx.monto < 50000 &&
+      (tx.categoria === categoria || (normalizedDesc && tx.descripcion?.toLowerCase().includes(normalizedDesc)))
+    );
+    const isFrequentHabit = similarPastTxs.length >= 2;
+
+    if (hasImpulseWord || (isSuspectCategory && isFrequentHabit)) {
+      setEsHormiga(true);
+    } else {
+      setEsHormiga(false);
+    }
+  }, [categoria, descripcion, tipo, monto, transactions]);
 
   useEffect(() => {
     fetch('/api/transactions')
@@ -33,16 +72,17 @@ export default function HistorialView() {
   }, []);
 
   const handleSaveTransaction = async () => {
-    if (!monto || !categoria || !descripcion) return;
-    
-    setLoading(true);
+    if (!monto || !categoria) return;
+
+    setSaving(true);
     const payload = {
       monto: Number(monto),
       tipo,
       categoria,
-      descripcion
+      descripcion,
+      es_gasto_hormiga: tipo === 'gasto' ? esHormiga : false
     };
-    
+
     try {
       const res = await fetch('/api/transactions', {
         method: 'POST',
@@ -51,24 +91,34 @@ export default function HistorialView() {
       });
       if (res.ok) {
         const json = await res.json();
-        // Aseguramos que la transacción se agrega al tope visual
-        setTransactions(prev => [json.data, ...prev]);
+        const newTx = Array.isArray(json.data) ? json.data[0] : json.data;
+        if (newTx) setTransactions(prev => [newTx, ...prev]);
         setShowModal(false);
         setMonto("");
         setCategoria("");
         setDescripcion("");
+        setEsHormiga(false);
       }
     } catch (e) {
       console.error(e);
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-4 mb-24 min-h-screen relative">
-      <h1 className="text-2xl font-bold mb-6 text-[#D8A93F]">Mi Actividad</h1>
-      
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-4 pb-32 min-h-screen relative">
+      {/* Header con botón siempre visible */}
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold text-[#D8A93F]">Mi Actividad</h1>
+        <button
+          onClick={() => setShowModal(true)}
+          className="bg-[#D8A93F] text-black px-4 py-2 rounded-full font-bold text-sm hover:scale-105 transition-transform"
+        >
+          + Añadir
+        </button>
+      </div>
+
       {loading && transactions.length === 0 ? (
         <div className="space-y-3 animate-pulse">
           {[1, 2, 3, 4].map(i => (
@@ -77,9 +127,9 @@ export default function HistorialView() {
         </div>
       ) : transactions.length > 0 ? (
         <div className="space-y-3">
-          {transactions.map(tx => (
-            <motion.div 
-              key={tx.id}
+          {transactions.map((tx, index) => (
+            <motion.div
+              key={tx.id || `tx-${index}-${tx.monto}`}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               className="bg-white/5 p-4 rounded-2xl flex justify-between items-center border border-white/5"
@@ -95,7 +145,7 @@ export default function HistorialView() {
               </div>
               <div className="text-right">
                 <span className={`font-bold ${tx.tipo === 'ingreso' ? 'text-green-400' : 'text-white'}`}>
-                  {tx.tipo === 'ingreso' ? '+' : '-'}${tx.monto.toLocaleString()}
+                  {tx.tipo === 'ingreso' ? '+' : '-'}${Number(tx.monto || 0).toLocaleString()}
                 </span>
                 {tx.es_gasto_hormiga && (
                   <p className="text-[9px] text-[#D8A93F] font-semibold">Gasto Hormiga 🐜</p>
@@ -105,75 +155,108 @@ export default function HistorialView() {
           ))}
         </div>
       ) : (
-        <div className="text-center py-20 bg-white/5 rounded-3xl border border-dashed border-white/10">
-          <p className="opacity-50 text-sm">No hay movimientos registrados.</p>
+        <div className="text-center py-20 bg-white/5 rounded-3xl border border-dashed border-white/10 flex flex-col items-center">
+          <p className="opacity-50 text-sm mb-4">No hay movimientos registrados.</p>
+          <button
+            onClick={() => setShowModal(true)}
+            className="bg-[#D8A93F] text-black px-6 py-3 rounded-xl font-bold hover:scale-105 transition-transform"
+          >
+            + Registrar mi primer gasto/ingreso
+          </button>
         </div>
       )}
-
-      {/* Botón Flotante */}
-      <button 
-        onClick={() => setShowModal(true)}
-        className="fixed bottom-24 right-6 w-14 h-14 bg-[#D8A93F] rounded-full flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-transform"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="black" className="w-6 h-6">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-        </svg>
-      </button>
 
       {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
           <div className="bg-[#111827] p-6 rounded-3xl w-full max-w-sm border border-white/10 space-y-4">
             <h2 className="text-xl font-bold text-white mb-2">Registrar Movimiento</h2>
-            
+
             <div className="flex gap-2 mb-4 p-1 bg-white/5 rounded-lg">
-              <button 
-                onClick={() => setTipo('gasto')}
+              <button
+                onClick={() => { setTipo('gasto'); setCategoria(""); }}
                 className={`flex-1 py-2 text-sm font-bold rounded-md ${tipo === 'gasto' ? 'bg-red-500/20 text-red-400' : 'text-white/50'}`}
               >
                 Gasto
               </button>
-              <button 
-                onClick={() => setTipo('ingreso')}
+              <button
+                onClick={() => { setTipo('ingreso'); setCategoria(""); }}
                 className={`flex-1 py-2 text-sm font-bold rounded-md ${tipo === 'ingreso' ? 'bg-green-500/20 text-green-400' : 'text-white/50'}`}
               >
                 Ingreso
               </button>
             </div>
 
-            <input 
-              type="number"
-              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white text-lg font-bold" 
-              placeholder="$ Monto" 
-              value={monto} 
-              onChange={e => setMonto(e.target.value)} 
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white text-lg font-bold"
+              placeholder="$ Monto (escribe el número)"
+              value={monto}
+              onChange={e => setMonto(e.target.value.replace(/\D/g, ''))}
             />
-            <input 
-              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white" 
-              placeholder="Categoría (Ej. Comida, Transporte)" 
-              value={categoria} 
-              onChange={e => setCategoria(e.target.value)} 
+
+            {/* Dropdown de categorías válidas según la BD */}
+            <select
+              className="w-full bg-[#1f2937] border border-white/10 rounded-xl p-3 text-white appearance-none cursor-pointer"
+              value={categoria}
+              onChange={e => setCategoria(e.target.value)}
+            >
+              <option value="" disabled>Selecciona una categoría</option>
+              {tipo === 'ingreso' ? (
+                <>
+                  <option value="salario">Salario / Trabajo</option>
+                  <option value="ingreso_extra">Ingreso Extra</option>
+                  <option value="otros">Otros Ingresos</option>
+                </>
+              ) : (
+                <>
+                  <option value="alimentacion">Alimentación 🍔</option>
+                  <option value="transporte">Transporte 🚌</option>
+                  <option value="vivienda">Vivienda 🏠</option>
+                  <option value="entretenimiento">Entretenimiento 🎬</option>
+                  <option value="salud">Salud 💊</option>
+                  <option value="educacion">Educación 📚</option>
+                  <option value="otros">Otros Gastos</option>
+                </>
+              )}
+            </select>
+
+            <input
+              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white"
+              placeholder="Descripción (ej: empanada, taxi, salario)"
+              value={descripcion}
+              onChange={e => setDescripcion(e.target.value)}
             />
-            <input 
-              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white" 
-              placeholder="Descripción opcional" 
-              value={descripcion} 
-              onChange={e => setDescripcion(e.target.value)} 
-            />
-            
+
+            {tipo === 'gasto' && (
+              <label className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer border transition-colors ${esHormiga ? 'bg-[#D8A93F]/10 border-[#D8A93F]/40' : 'bg-white/5 border-white/10'}`}>
+                <input
+                  type="checkbox"
+                  checked={esHormiga}
+                  onChange={e => setEsHormiga(e.target.checked)}
+                  className="w-5 h-5 accent-[#D8A93F]"
+                />
+                <span className="text-white text-sm font-semibold">
+                  {esHormiga ? '🐜 ¡Detectado como Gasto Hormiga!' : '¿Es un gasto hormiga?'}
+                </span>
+              </label>
+            )}
+
             <div className="flex gap-3 justify-end mt-6">
-              <button 
+              <button
                 onClick={() => setShowModal(false)}
                 className="px-4 py-3 text-white/50 font-semibold"
               >
                 Cancelar
               </button>
-              <button 
+              <button
                 onClick={handleSaveTransaction}
-                disabled={loading || !monto || !categoria}
+                disabled={saving || !monto || !categoria}
                 className="bg-[#D8A93F] text-black px-6 py-3 rounded-xl font-bold flex-1 disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {loading ? <span className="animate-spin text-xl">↻</span> : "Guardar"}
+                {saving ? <span className="animate-spin text-xl">↻</span> : "Guardar"}
               </button>
             </div>
           </div>

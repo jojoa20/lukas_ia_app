@@ -6,7 +6,7 @@ import { useChat } from "@ai-sdk/react";
 
 export default function ChatView() {
   const [input, setInput] = useState("");
-  const { messages, sendMessage, status, error } = useChat({ id: "lukas-ai-session" });
+  const { messages, append, status, error } = useChat({ id: "lukas-ai-session", maxSteps: 5 });
   const scrollRef = useRef<HTMLDivElement>(null);
   const isLoading = status === 'submitted';
 
@@ -19,10 +19,9 @@ export default function ChatView() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
-    
     const userMessage = input;
     setInput("");
-    await sendMessage({ role: 'user', parts: [{ type: 'text', text: userMessage }] });
+    await append({ role: 'user', content: userMessage });
   };
 
   return (
@@ -45,12 +44,10 @@ export default function ChatView() {
             className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div className={`max-w-[80%] p-4 rounded-2xl ${m.role === 'user' ? 'bg-[#D8A93F] text-black rounded-tr-none' : 'bg-white/10 text-white rounded-tl-none border border-white/10'}`}>
-              {m.parts.map((part, pIdx) => (
-                part.type === 'text' ? (
-                  <p key={pIdx} className="text-sm leading-relaxed">{part.text}</p>
-                ) : null
-              ))}
-            </div>
+                <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                  {typeof m.content === 'string' ? m.content : (m.parts?.filter((p: {type: string}) => p.type === 'text').map((p: {type: string, text: string}) => p.text).join('') || '')}
+                </p>
+              </div>
           </motion.div>
         ))}
         {isLoading && (
