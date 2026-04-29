@@ -14,10 +14,14 @@ export default function DemoContainer() {
   const [showSplash, setShowSplash] = useState(true);
 
   return (
-    <div className="flex flex-col h-full w-full relative overflow-hidden bg-[#0a0a0c]">
-      {/* Background Orbs for Premium Look */}
-      <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[40%] bg-[#1a2a5e]/20 blur-[100px] rounded-full z-0" />
-      <div className="absolute bottom-[10%] right-[-10%] w-[40%] h-[30%] bg-[#D8A93F]/5 blur-[80px] rounded-full z-0" />
+    <div className="flex flex-col h-full w-full relative overflow-hidden bg-[#050507]">
+      {/* Elite Noise Overlay */}
+      <div className="noise-overlay" />
+
+      {/* Atmospheric Background Orbs */}
+      <div className="absolute top-[-20%] left-[-20%] w-[80%] h-[60%] bg-[#1a2a5e]/20 blur-[120px] rounded-full z-0" />
+      <div className="absolute bottom-[-10%] right-[-20%] w-[70%] h-[50%] bg-[#D8A93F]/5 blur-[100px] rounded-full z-0" />
+      <div className="absolute top-[40%] right-[-10%] w-[30%] h-[30%] bg-[#8b5cf6]/10 blur-[80px] rounded-full z-0" />
 
       {showSplash && <SplashScreen onFinishLoading={() => setShowSplash(false)} />}
       
@@ -25,10 +29,10 @@ export default function DemoContainer() {
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
-            initial={{ opacity: 0, y: 10, filter: "blur(10px)" }}
-            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-            exit={{ opacity: 0, y: -10, filter: "blur(10px)" }}
-            transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+            initial={{ opacity: 0, scale: 0.98, filter: "blur(10px)" }}
+            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+            exit={{ opacity: 0, scale: 1.02, filter: "blur(10px)" }}
+            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
             className="h-full"
           >
             {activeTab === "home" && <HomeView key="home" />}
@@ -40,11 +44,10 @@ export default function DemoContainer() {
         </AnimatePresence>
       </main>
 
-      {/* Redesigned Floating Bottom Nav */}
       <BottomNav activeTab={activeTab} onChangeTab={setActiveTab} />
       
-      {/* Safe Area Spacer for iOS-style nav */}
-      <div className="h-6 w-full shrink-0" />
+      {/* Safe Area Spacer */}
+      <div className="h-10 w-full shrink-0" />
     </div>
   );
 }
