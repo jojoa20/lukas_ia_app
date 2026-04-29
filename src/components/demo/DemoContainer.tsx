@@ -8,9 +8,11 @@ import AnalyticsView from "./AnalyticsView";
 import MetasView from "./MetasView";
 import HistorialView from "./HistorialView";
 import BottomNav from "./BottomNav";
+import ReflectionView from "./ReflectionView";
 
 export default function DemoContainer() {
   const [activeTab, setActiveTab] = useState("home");
+  const [showReflection, setShowReflection] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
 
   return (
@@ -35,12 +37,18 @@ export default function DemoContainer() {
             transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
             className="h-full"
           >
-            {activeTab === "home" && <HomeView key="home" />}
+            {activeTab === "home" && <HomeView onOpenReflection={() => setShowReflection(true)} />}
             {activeTab === "chat" && <ChatView key="chat" />}
             {activeTab === "analytics" && <AnalyticsView key="analytics" />}
             {activeTab === "metas" && <MetasView key="metas" />}
             {activeTab === "historial" && <HistorialView key="historial" />}
           </motion.div>
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {showReflection && (
+            <ReflectionView onBack={() => setShowReflection(false)} />
+          )}
         </AnimatePresence>
       </main>
 

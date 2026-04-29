@@ -23,7 +23,7 @@ function AnimatedNumber({ value }: { value: number }) {
   return <>{displayValue}</>;
 }
 
-export default function HomeView() {
+export default function HomeView({ onOpenReflection }: { onOpenReflection?: () => void }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -170,7 +170,10 @@ export default function HomeView() {
       </div>
 
       {/* Consistency Bar */}
-      <div className="mt-8 glass-elite rounded-3xl p-6 border-white/5 flex items-center justify-between group relative overflow-hidden">
+      <div 
+        onClick={onOpenReflection}
+        className="mt-8 glass-elite rounded-3xl p-6 border-white/5 flex items-center justify-between group relative overflow-hidden cursor-pointer"
+      >
         <div className="flex items-center gap-6">
           <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center text-2xl shadow-inner group-hover:text-[#D8A93F] transition-colors">
             🔥
