@@ -153,3 +153,51 @@ export async function addGastoHormiga(args: { monto: number, descripcion: string
     mensaje: `Uy zona... Registré un gasto hormiga de $${args.monto} por '${args.descripcion}'. Esto te baja el FinScore en ${impacto} puntos.`
   }
 }
+
+export async function registrarTransaccion(args: { monto: number, tipo: 'ingreso'|'gasto', categoria: string, descripcion: string }) {
+  const { supabase, user } = await getAuthenticatedUser();
+
+  // Re-utilizamos el contexto lógico de Detección de Gasto Hormiga (Grafo-Lite)
+  let es_hormiga = false;
+  if (args.tipo === 'gasto' && args.monto < 50000) {
+    const descNormalizada = args.descripcion.toLowerCase();
+    const impulseWords = ['cafe', 'café', 'tinto', 'empanada', 'antojo', 'dulce', 'pola', 'helado', 'snack', 'uber', 'rappi'];
+    const isSuspect = ['alimentacion', 'entretenimiento', 'otros', 'transporte'].includes(args.categoria);
+    
+    if (impulseWords.some(w => descNormalizada.includes(w)) || isSuspect) {
+      es_hormiga = true;
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('transactions')
+    .insert([
+      {
+        user_id: user.id,
+        tipo: args.tipo,
+        monto: args.monto,
+        categoria: args.categoria,
+        descripcion: args.descripcion,
+        es_gasto_hormiga: es_hormiga,
+        metodo_entrada: 'ai'
+      }
+    ])
+    .select();
+
+  if (error) {
+    console.error('Error registrando transacción:', error);
+    return { success: false, error: error.message };
+  }
+
+  if (es_hormiga) {
+    return {
+      success: true,
+      mensaje: `¡Listo! Registré tu ${args.tipo} de $${args.monto} en ${args.categoria}. Pilla que esto lo detecté como Gasto Hormiga 🐜, ojo con eso.`
+    };
+  }
+
+  return {
+    success: true,
+    mensaje: `¡Listo, parcero! Tu ${args.tipo} de $${args.monto} por '${args.descripcion}' quedó anotado en los libros.`
+  };
+}

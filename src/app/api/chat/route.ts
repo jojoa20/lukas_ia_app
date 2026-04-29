@@ -1,7 +1,7 @@
 import { streamText, tool } from 'ai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { z } from 'zod';
-import { getFinscore, createMeta, addGastoHormiga } from '@/lib/supabase/actions';
+import { getFinscore, createMeta, addGastoHormiga, registrarTransaccion } from '@/lib/supabase/actions';
 
 const google = createGoogleGenerativeAI({
   apiKey: process.env.GEMINI_API_KEY || ''
@@ -38,6 +38,16 @@ export async function POST(req: Request) {
             descripcion: z.string().describe('Qué fue lo que compró el usuario (ej: Café, snacks, uber, dulces)')
           }),
           execute: async ({ monto, descripcion }: { monto: number, descripcion: string }) => await addGastoHormiga({ monto, descripcion })
+        }),
+        registrarTransaccion: tool({
+          description: 'Registra un ingreso de dinero o un gasto general en la cuenta financiera del usuario.',
+          inputSchema: z.object({
+            monto: z.number().describe('Monto numérico exacto en COP (pesos colombianos) sin símbolos ni puntos.'),
+            tipo: z.enum(['ingreso', 'gasto']).describe('Si es un ingreso de dinero (salario, regalo) o un gasto (compra, recibo).'),
+            categoria: z.enum(['alimentacion', 'transporte', 'vivienda', 'entretenimiento', 'salud', 'educacion', 'salario', 'ingreso_extra', 'otros']).describe('Categoría estricta obligatoria.'),
+            descripcion: z.string().describe('Descripción breve y natural de la transacción.')
+          }),
+          execute: async (args) => await registrarTransaccion(args)
         })
       }
     });
