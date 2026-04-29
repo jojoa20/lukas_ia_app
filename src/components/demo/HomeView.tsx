@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import AlertModal from "./AlertModal";
+import LeakBusterGraph from "../dashboard/LeakBusterGraph";
 import { motion, animate, AnimatePresence } from "framer-motion";
 import { UserButton } from "@clerk/nextjs";
 
@@ -112,6 +113,11 @@ export default function HomeView({ onOpenAlert }: { onOpenAlert?: () => void }) 
             <span className="text-xs text-red-400 font-bold">Gasto Hormiga</span>
           </div>
         </div>
+      </div>
+
+      {/* Leak Buster: Visualización de Burbujas de Gastos Hormiga */}
+      <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-5 mb-6">
+        <LeakBusterGraph />
       </div>
 
       <AnimatePresence>
