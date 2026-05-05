@@ -12,10 +12,14 @@ import BottomNav from "./BottomNav";
 export default function DemoContainer() {
   const [activeTab, setActiveTab] = useState("home"); // home, chat, analytics
   const [viewVersion, setViewVersion] = useState(0);
+  const [analyticsTarget, setAnalyticsTarget] = useState<{ viewMode?: "groups" | "compare"; month?: string }>({});
   const [showAlert, setShowAlert] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
 
-  const changeTab = (tab: string) => {
+  const changeTab = (tab: string, options?: { viewMode?: "groups" | "compare"; month?: string }) => {
+    if (tab === "analytics") {
+      setAnalyticsTarget(options || {});
+    }
     setActiveTab(tab);
     setViewVersion((version) => version + 1);
   };
@@ -29,7 +33,7 @@ export default function DemoContainer() {
         <AnimatePresence mode="wait">
           {activeTab === "home" && <HomeView key={`home-${viewVersion}`} onOpenAlert={() => setShowAlert(true)} />}
           {activeTab === "chat" && <ChatView key={`chat-${viewVersion}`} onNavigate={changeTab} />}
-          {activeTab === "analytics" && <AnalyticsView key={`analytics-${viewVersion}`} />}
+          {activeTab === "analytics" && <AnalyticsView key={`analytics-${viewVersion}`} initialViewMode={analyticsTarget.viewMode} initialMonth={analyticsTarget.month} />}
           {activeTab === "metas" && <MetasView key={`metas-${viewVersion}`} />}
           {activeTab === "historial" && <HistorialView key={`historial-${viewVersion}`} />}
         </AnimatePresence>

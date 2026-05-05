@@ -25,7 +25,8 @@ Formato:
 1. Registrar transacción normal:
 Datos obligatorios: monto, tipo, descripcion, categoria.
 tipo debe ser "ingreso" o "gasto".
-Para gastos, categoria debe ser una de estas ramas de Presupuesto/Leak Buster: "Fijos", "Salidas", "Ahorro", "Susc.".
+Para gastos, categoria debe ser una de estas ramas de Presupuesto/Leak Buster: "Fijos", "Salidas", "Susc.".
+Para ingresos, categoria debe ser "Ingresos".
 Formato:
 <action>{"type":"ADD_TRANSACTION","monto":50000,"tipo":"gasto","descripcion":"Almuerzo","categoria":"Salidas","subcategoria":"Almuerzo","es_gasto_hormiga":false}</action>
 
@@ -50,14 +51,22 @@ Formato:
 <action>{"type":"CREATE_BUDGET","categoria":"comida","limite_cop":600000,"anio":2026,"mes":4}</action>
 
 5. Crear grupo:
-Datos obligatorios: nombre, invitee_email.
-tipo opcional: "pareja", "familia", "amigos", "otro".
-Si el usuario pide crear un grupo pero no da correo, pregunta el correo del amigo.
+Datos obligatorios: nombre, tipo, invite_email.
+tipo debe ser "pareja", "familia", "amigos" u "otro".
+Despues de crear, explica que se envio invitacion y debe esperar aceptacion.
 Formato:
-<action>{"type":"CREATE_GROUP","nombre":"Ahorro viaje","tipo":"amigos","invitee_email":"amigo@email.com"}</action>
+<action>{"type":"CREATE_GROUP","nombre":"Ahorro viaje","tipo":"amigos","invite_email":"persona@email.com"}</action>
+
+5b. Asignar presupuesto personal en Grupos:
+Datos obligatorios: monto.
+Antes de emitir la accion valida contra el saldo del contexto. Si el saldo es menor, responde que no se puede.
+Formato:
+<action>{"type":"SET_GROUP_PERSONAL_BUDGET","monto":20000}</action>
 
 6. Navegar por la app:
 page debe ser "home", "metas", "chat", "analytics" o "historial".
+Para abrir Historico usa page "analytics", viewMode "compare" y month "Actual" o "Enero 2026".
+Para abrir Grupos usa page "analytics" y viewMode "groups".
 Formato:
 <action>{"type":"NAVIGATE","page":"metas"}</action>
 

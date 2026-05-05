@@ -11,6 +11,63 @@ type ChatMessage = {
   content: string
 }
 
+type FinancialSnapshot = {
+  profile?: any
+  recentTx?: any[]
+  metas?: any[]
+  budgets?: any[]
+  groupNames?: string
+}
+
+function formatCOP(value: number | null | undefined) {
+  return `$${Math.round(Number(value || 0)).toLocaleString('es-CO')} COP`
+}
+
+const menuHelp: Record<string, string> = {
+  home: 'En Inicio ves el resumen rapido: saldo actual, FinScore, alertas importantes y tu panorama financiero del momento. Es el lugar para mirar como vas sin entrar al detalle.',
+  inicio: 'En Inicio ves el resumen rapido: saldo actual, FinScore, alertas importantes y tu panorama financiero del momento. Es el lugar para mirar como vas sin entrar al detalle.',
+  metas: 'En Metas puedes crear objetivos de ahorro, ponerles monto, fecha y prioridad. Lukas te ayuda a ver cuanto falta y que tan cerca estas de cumplirlas.',
+  historial: 'En Historial ves tus movimientos: gastos, ingresos y registros recientes. Sirve para revisar en que se fue la plata y confirmar que todo quedo bien guardado.',
+  presupuesto: 'En Presupuesto organizas limites por categoria. Sirve para comparar cuanto planeabas gastar contra cuanto llevas gastado.',
+  presupuestos: 'En Presupuesto organizas limites por categoria. Sirve para comparar cuanto planeabas gastar contra cuanto llevas gastado.',
+  grupos: 'En Grupos puedes manejar finanzas compartidas, por ejemplo con pareja, familia o amigos. Sirve para separar gastos y responsabilidades por grupo.',
+  grupo: 'En Grupos puedes manejar finanzas compartidas, por ejemplo con pareja, familia o amigos. Sirve para separar gastos y responsabilidades por grupo.',
+  chat: 'En Chat hablas con Lukas en lenguaje natural. Puedes preguntarle tu saldo, pedir resumen, crear metas, registrar gastos o pedir explicaciones sobre tus finanzas.',
+}
+
+function menuHelpResponse(text: string) {
+  if (!/(menu|seccion|secci[oó]n|pantalla|apartado|pesta[nñ]a|funciona|sirve|hace)/.test(text)) return null
+
+  const requestedMenus = Object.keys(menuHelp).filter((key) => text.includes(key))
+  const uniqueMenus = Array.from(new Set(requestedMenus.map((key) => {
+    if (key === 'inicio') return 'home'
+    if (key === 'presupuestos') return 'presupuesto'
+    if (key === 'grupo') return 'grupos'
+    return key
+  })))
+
+  if (uniqueMenus.length === 1) {
+    const key = uniqueMenus[0]
+    return { role: 'assistant' as const, content: menuHelp[key] }
+  }
+
+  if (text.includes('cada') || text.includes('todos') || text.includes('menus') || text.includes('menues') || text.includes('menú') || text.includes('menu')) {
+    return {
+      role: 'assistant' as const,
+      content: [
+        menuHelp.home,
+        menuHelp.chat,
+        menuHelp.historial,
+        menuHelp.metas,
+        menuHelp.presupuesto,
+        menuHelp.grupos,
+      ].join('\n\n'),
+    }
+  }
+
+  return null
+}
+
 function parseAmount(text: string) {
   const normalized = text.toLowerCase().replace(/\./g, '').replace(/,/g, '')
   const match = normalized.match(/(\d+(?:\.\d+)?)\s*(millones|millon|palos|m|mil|k)?/)
@@ -30,19 +87,50 @@ function addMonths(date: Date, months: number) {
   return next.toISOString().split('T')[0]
 }
 
+const monthsByName: Record<string, string> = {
+  enero: 'Enero',
+  febrero: 'Febrero',
+  marzo: 'Marzo',
+  abril: 'Abril',
+  mayo: 'Mayo',
+  junio: 'Junio',
+  julio: 'Julio',
+  agosto: 'Agosto',
+  septiembre: 'Septiembre',
+  setiembre: 'Septiembre',
+  octubre: 'Octubre',
+  noviembre: 'Noviembre',
+  diciembre: 'Diciembre',
+}
+
+function parseEmail(text: string) {
+  return text.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i)?.[0] || null
+}
+
+function parseGroupType(text: string) {
+  if (text.includes('familia')) return 'familia'
+  if (text.includes('pareja')) return 'pareja'
+  if (text.includes('otro')) return 'otro'
+  if (text.includes('amigo') || text.includes('amigos')) return 'amigos'
+  return null
+}
+
+function parseHistoryMonth(text: string) {
+  if (/actual|este mes|mes actual/.test(text)) return 'Actual'
+  const match = Object.keys(monthsByName).find((month) => text.includes(month))
+  if (!match) return 'Actual'
+  return `${monthsByName[match]} ${new Date().getFullYear()}`
+}
+
 function classifyExpense(text: string) {
   if (/arriendo|renta|servicio|luz|agua|\bgas\b|internet|mercado|colegio|cuota|prestamo/.test(text)) return 'Fijos'
-  if (/ahorro|meta|inversion|inverti|aporte/.test(text)) return 'Ahorro'
+  if (/ingreso|nomina|nómina|salario|pago|transferencia|ahorro|meta|inversion|inverti|aporte/.test(text)) return 'Ingresos'
   if (/netflix|spotify|prime|hbo|disney|suscripcion|mensualidad|app/.test(text)) return 'Susc.'
   return 'Salidas'
 }
 
 function extractDescription(text: string) {
   return text.match(/(?:en|por|para|de)\s+([a-záéíóúñ\s]+)$/i)?.[1]?.trim() || 'Movimiento'
-}
-
-function extractEmail(text: string) {
-  return text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0]?.toLowerCase() || null
 }
 
 function isAffirmative(text: string) {
@@ -65,13 +153,119 @@ function isRecurringHormiga(text: string, amount: number | null, recentTx: any[]
   return similar.length >= 6
 }
 
-function localFallback(messages: ChatMessage[], recentTx: any[] = []) {
+function localFallback(messages: ChatMessage[], snapshot: FinancialSnapshot = {}) {
   const last = messages.filter((m) => m.role === 'user').at(-1)?.content || ''
   const text = last.toLowerCase()
   const amount = parseAmount(text)
   const previousAssistant = messages.filter((m) => m.role === 'assistant').at(-1)?.content.toLowerCase() || ''
   const pendingGoal = previousAssistant.includes('crear la meta me falta')
+  const pendingGroup = previousAssistant.includes('crear el grupo me falta')
   const commaParts = last.split(',').map((part) => part.trim()).filter(Boolean)
+  const recentTx = snapshot.recentTx || []
+  const profile = snapshot.profile || {}
+  const metas = snapshot.metas || []
+  const budgets = snapshot.budgets || []
+
+  const isQuestion = /^(cual|cu[aá]l|como|c[oó]mo|cuanto|cu[aá]nto|que|qu[eé]|dime|muestrame|mu[eé]strame|consultar|consulta|ver|quiero saber|quisiera consultar|quisiero consultadr)/.test(text.trim())
+
+  const menuAnswer = menuHelpResponse(text)
+  if (menuAnswer) return menuAnswer
+
+  if ((text.includes('saldo') || text.includes('balance') || text.includes('plata tengo')) && !amount) {
+    return {
+      role: 'assistant',
+      content: `Tu saldo actual registrado es ${formatCOP(profile.balance_actual)}.`,
+    }
+  }
+
+  if (text.includes('hormiga') && isQuestion) {
+    const hormigaTx = recentTx.filter((tx) => tx.es_gasto_hormiga)
+    const examples = hormigaTx
+      .slice(0, 3)
+      .map((tx) => `${formatCOP(tx.monto)} en ${tx.descripcion || tx.subcategoria || tx.categoria || 'gasto pequeno'}`)
+      .join(', ')
+
+    return {
+      role: 'assistant',
+      content: `Un gasto hormiga es un gasto pequeno que parece inofensivo solo, pero se vuelve importante si se repite mucho. Lukas lo puede marcar cuando el monto es bajo y aparece con frecuencia, por ejemplo snacks, domicilios pequenos, apps, cafe o compras impulsivas.${examples ? ` En tus movimientos recientes vi estos posibles ejemplos: ${examples}.` : ''}`,
+    }
+  }
+
+  if (/finscore|fin score|puntaje|score/.test(text)) {
+    return {
+      role: 'assistant',
+      content: `Tu FinScore actual es ${profile.finscore_actual || 500}/1000.`,
+    }
+  }
+
+  if (text.includes('racha')) {
+    return {
+      role: 'assistant',
+      content: `Tu racha actual es de ${profile.racha_actual_dias || 0} dias.`,
+    }
+  }
+
+  if ((text.includes('meta') || text.includes('metas')) && isQuestion) {
+    if (metas.length === 0) {
+      return { role: 'assistant', content: 'No tienes metas activas registradas todavia.' }
+    }
+
+    const summary = metas
+      .slice(0, 5)
+      .map((m) => `${m.nombre}: ${formatCOP(m.monto_actual)} de ${formatCOP(m.monto_objetivo)}${m.fecha_objetivo ? `, fecha ${m.fecha_objetivo}` : ''}`)
+      .join('\n')
+    return {
+      role: 'assistant',
+      content: `Estas son tus metas activas:\n${summary}`,
+    }
+  }
+
+  if ((text.includes('presupuesto') || text.includes('presupuestos')) && isQuestion) {
+    if (budgets.length === 0) {
+      return { role: 'assistant', content: 'No tienes presupuestos registrados todavia.' }
+    }
+
+    const summary = budgets
+      .slice(0, 5)
+      .map((b) => `${b.categoria}: ${formatCOP(b.gastado_cop)} gastados de ${formatCOP(b.limite_cop)} (${b.mes}/${b.anio})`)
+      .join('\n')
+    return {
+      role: 'assistant',
+      content: `Tus presupuestos recientes van asi:\n${summary}`,
+    }
+  }
+
+  if ((text.includes('movimiento') || text.includes('transaccion') || text.includes('historial') || text.includes('gastos recientes')) && isQuestion) {
+    if (recentTx.length === 0) {
+      return { role: 'assistant', content: 'No tienes movimientos recientes registrados todavia.' }
+    }
+
+    const summary = recentTx
+      .slice(0, 5)
+      .map((tx) => `${tx.tipo === 'gasto' ? '-' : '+'}${formatCOP(tx.monto)} en ${tx.descripcion || tx.subcategoria || tx.categoria || 'movimiento'} (${tx.fecha_transaccion || 'sin fecha'})`)
+      .join('\n')
+    return {
+      role: 'assistant',
+      content: `Tus ultimos movimientos son:\n${summary}`,
+    }
+  }
+
+  if (/(historico|histórico|comparar|comparativo)/.test(text)) {
+    const month = parseHistoryMonth(text)
+    return {
+      role: 'assistant',
+      content: `Listo, pana. Te llevo al historico de ${month === 'Actual' ? 'este mes' : month}.\n<action>{"type":"NAVIGATE","page":"analytics","viewMode":"compare","month":"${month}"}</action>`,
+    }
+  }
+
+  if (/como voy|c[oó]mo voy|resumen|estado financiero/.test(text)) {
+    const lastExpense = recentTx.find((tx) => tx.tipo === 'gasto')
+    const activeGoals = metas.length
+    return {
+      role: 'assistant',
+      content: `Vas con saldo de ${formatCOP(profile.balance_actual)}, FinScore ${profile.finscore_actual || 500}/1000 y ${activeGoals} meta${activeGoals === 1 ? '' : 's'} activa${activeGoals === 1 ? '' : 's'}.${lastExpense ? ` Tu gasto reciente mas visible fue ${formatCOP(lastExpense.monto)} en ${lastExpense.descripcion || lastExpense.subcategoria || lastExpense.categoria}.` : ''}`,
+    }
+  }
 
   if (previousAssistant.includes('se borrara el saldo anterior') && isAffirmative(text)) {
     const previousAmount = parseAmount(previousAssistant)
@@ -120,6 +314,25 @@ function localFallback(messages: ChatMessage[], recentTx: any[] = []) {
     }
   }
 
+  if ((text.includes('grupo') || text.includes('grupos')) && /presupuesto|asignar|destinar|poner/.test(text)) {
+    if (!amount) {
+      return { role: 'assistant', content: 'Melo, pana. Decime cuanto presupuesto personal quieres asignar en Grupos.' }
+    }
+
+    const balance = Number(profile.balance_actual || 0)
+    if (amount > balance) {
+      return {
+        role: 'assistant',
+        content: `No puedes asignar ${formatCOP(amount)}: tu saldo actual es ${formatCOP(balance)}, es menor que ese presupuesto.`,
+      }
+    }
+
+    return {
+      role: 'assistant',
+      content: `Listo. Asigno ${formatCOP(amount)} como tu presupuesto personal en Grupos.\n<action>{"type":"SET_GROUP_PERSONAL_BUDGET","monto":${amount}}</action><action>{"type":"NAVIGATE","page":"analytics","viewMode":"groups"}</action>`,
+    }
+  }
+
   if (text.includes('presupuesto')) {
     const category = text.match(/(?:para|de)\s+([a-záéíóúñ\s]+?)(?:\s+de|\s+por|\s+con|\s+en|$)/i)?.[1]?.trim()
     const missing = []
@@ -135,14 +348,25 @@ function localFallback(messages: ChatMessage[], recentTx: any[] = []) {
     }
   }
 
-  if (text.includes('grupo')) {
-    const name = text.match(/(?:grupo|llamado|para)\s+([a-záéíóúñ\s]+?)(?:\s+tipo|$)/i)?.[1]?.replace(/^de\s+/, '').trim()
-    const email = extractEmail(text)
-    if (!name || !email) return { role: 'assistant', content: 'Listo, pana. Para crear el grupo me falta nombre del grupo y correo del amigo.' }
-    const tipo = text.includes('familia') ? 'familia' : text.includes('pareja') ? 'pareja' : text.includes('otro') ? 'otro' : 'amigos'
+  if (text.includes('grupo') || pendingGroup) {
+    const email = parseEmail(last)
+    const name = commaParts.length >= 2
+      ? commaParts[0]
+      : text.match(/(?:grupo|llamado|nombre|para)\s+([a-záéíóúñ\s]+?)(?:\s+tipo|\s+de\s+tipo|\s+invita|\s+con\s+correo|\s+correo|$)/i)?.[1]?.replace(/^de\s+/, '').trim()
+    const tipo = parseGroupType(text)
+    const missing = []
+    if (!name) missing.push('nombre')
+    if (!tipo) missing.push('tipo (pareja, familia, amigos u otro)')
+    if (!email) missing.push('correo de invitacion')
+
+    if (missing.length > 0) {
+      return { role: 'assistant', content: `De una, pana. Para crear el grupo me falta: ${missing.join(', ')}.` }
+    }
+
+    const cleanName = (name || 'Grupo').charAt(0).toUpperCase() + (name || 'Grupo').slice(1)
     return {
       role: 'assistant',
-      content: `Listo. Creo el grupo "${name}" e invito a ${email}.\n<action>{"type":"CREATE_GROUP","nombre":"${name}","tipo":"${tipo}","invitee_email":"${email}"}</action><action>{"type":"NAVIGATE","page":"analytics"}</action>`,
+      content: `Listo. Creo el grupo "${cleanName}" y envio la invitacion a ${email}. Queda creado; ahora debes esperar a que esa persona acepte la invitacion.\n<action>{"type":"CREATE_GROUP","nombre":"${cleanName}","tipo":"${tipo}","invite_email":"${email}"}</action><action>{"type":"NAVIGATE","page":"analytics","viewMode":"groups"}</action>`,
     }
   }
 
@@ -163,7 +387,7 @@ function localFallback(messages: ChatMessage[], recentTx: any[] = []) {
     }
   }
 
-  if (text.includes('ingreso') || text.includes('recibi') || text.includes('recibí') || text.includes('llego dinero') || text.includes('llegó dinero') || text.includes('me pagaron') || text.includes('gan')) {
+  if (/ingreso|recibi|recibí|llego|llegó|llegaron|me\s+llego|me\s+llegó|me\s+llegaron|me\s+pagaron|pago|n[oó]mina|salario|gan/.test(text)) {
     const desc = extractDescription(text) || 'Ingreso'
     if (!amount) return { role: 'assistant', content: 'Melo. Decime cuanto ingreso y por que concepto.' }
     return {
@@ -174,7 +398,7 @@ function localFallback(messages: ChatMessage[], recentTx: any[] = []) {
 
   if (text.includes('metas')) return { role: 'assistant', content: 'Te llevo a metas.\n<action>{"type":"NAVIGATE","page":"metas"}</action>' }
   if (text.includes('historial')) return { role: 'assistant', content: 'Te llevo al historial.\n<action>{"type":"NAVIGATE","page":"historial"}</action>' }
-  if (text.includes('grupo')) return { role: 'assistant', content: 'Te llevo a grupos.\n<action>{"type":"NAVIGATE","page":"analytics"}</action>' }
+  if (text.includes('grupo')) return { role: 'assistant', content: 'Te llevo a grupos.\n<action>{"type":"NAVIGATE","page":"analytics","viewMode":"groups"}</action>' }
 
   return {
     role: 'assistant',
@@ -295,15 +519,17 @@ CONTEXTO ACTUAL DEL USUARIO:
       })
     }
 
-    const deterministicIntent = /saldo|gast|pague|pagué|compre|compré|ingreso|recibi|recibí|llego dinero|llegó dinero|me pagaron|gan|grupo/.test(latestText)
+    const deterministicIntent = /saldo|gast|pague|pagué|compre|compré|ingreso|recibi|recibí|llego|llegó|llegaron|me\s+llego|me\s+llegó|me\s+llegaron|me\s+pagaron|pago|n[oó]mina|salario|gan/.test(latestText)
       || previousAssistant.includes('se borrara el saldo anterior')
+      || previousAssistant.includes('crear el grupo me falta')
+      || /grupo|grupos|historico|histórico|comparar|comparativo/.test(latestText)
 
     if (deterministicIntent) {
-      return NextResponse.json({ data: localFallback(messages, recentTx || []) })
+      return NextResponse.json({ data: localFallback(messages, { profile, recentTx: recentTx || [], metas: metas || [], budgets: budgets || [], groupNames }) })
     }
 
     if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'dummy_key_for_build') {
-      return NextResponse.json({ data: localFallback(messages, recentTx || []) })
+      return NextResponse.json({ data: localFallback(messages, { profile, recentTx: recentTx || [], metas: metas || [], budgets: budgets || [], groupNames }) })
     }
 
     const response = await openai.chat.completions.create({

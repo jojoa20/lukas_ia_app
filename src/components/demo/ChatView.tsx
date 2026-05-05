@@ -1,7 +1,7 @@
 ﻿"use client";
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { addTransaction, addGastoHormiga, createBudget, createGroup } from "@/lib/supabase/actions";
+import { addTransaction, addGastoHormiga, createBudget } from "@/lib/supabase/actions";
 import { AudioLines } from "lucide-react";
 
 interface Message {
@@ -11,7 +11,7 @@ interface Message {
 }
 
 interface ChatViewProps {
-  onNavigate?: (page: string) => void;
+  onNavigate?: (page: string, options?: { viewMode?: "groups" | "compare"; month?: string }) => void;
 }
 
 export default function ChatView({ onNavigate }: ChatViewProps) {
@@ -133,8 +133,38 @@ export default function ChatView({ onNavigate }: ChatViewProps) {
             if (!res.success) executionLog += " (Error: " + res.error + ")";
           }
           else if (actionData.type === "CREATE_GROUP") {
-            const res = await createGroup(actionData);
-            if (!res.success) executionLog += " (Error: " + res.error + ")";
+            const res = await fetch("/api/groups", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              cache: "no-store",
+              body: JSON.stringify({
+                nombre: actionData.nombre,
+                tipo: actionData.tipo || "amigos",
+                invite_email: actionData.invite_email || "",
+              }),
+            });
+            if (res.status === 401) {
+              window.location.href = "/sign-in";
+              return;
+            }
+            const result = await res.json().catch(() => null);
+            if (!res.ok) executionLog += " (Error: " + (result?.error?.message || result?.error || "No se pudo crear el grupo") + ")";
+          }
+          else if (actionData.type === "SET_GROUP_PERSONAL_BUDGET") {
+            const res = await fetch("/api/groups", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              cache: "no-store",
+              body: JSON.stringify({ personal_budget: Number(actionData.monto) || 0 }),
+            });
+            if (res.status === 401) {
+              window.location.href = "/sign-in";
+              return;
+            }
+            const result = await res.json().catch(() => null);
+            if (!res.ok) executionLog += " (Error: " + (result?.error?.message || result?.error || "No se pudo asignar el presupuesto") + ")";
           }
           else if (actionData.type === "SET_CURRENT_BALANCE") {
             const res = await fetch("/api/profile", {
@@ -146,7 +176,7 @@ export default function ChatView({ onNavigate }: ChatViewProps) {
             if (!res.ok) executionLog += " (Error actualizando saldo)";
           }
           else if (actionData.type === "NAVIGATE" && onNavigate) { 
-            onNavigate(actionData.page); 
+            onNavigate(actionData.page, { viewMode: actionData.viewMode, month: actionData.month }); 
           }
         } catch (err) { 
           executionLog += " (Error técnico)";
