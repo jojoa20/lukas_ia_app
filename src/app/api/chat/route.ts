@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import OpenAI from 'openai'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureProfile, getLukasUser } from '@/lib/lukas-user'
 import { LUKAS_AI_ACTION_GUIDE } from '@/lib/lukas-ai-system'
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'dummy_key_for_build' })
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'dummy_key_for_build')
 
 type ChatMessage = {
   role: 'user' | 'assistant'
@@ -17,6 +17,7 @@ type FinancialSnapshot = {
   metas?: any[]
   budgets?: any[]
   groupNames?: string
+  trends?: any[]
 }
 
 function formatCOP(value: number | null | undefined) {
@@ -374,6 +375,20 @@ function localFallback(messages: ChatMessage[], snapshot: FinancialSnapshot = {}
     const desc = extractDescription(text)
     if (!amount) return { role: 'assistant', content: 'De una, pana. Decime cuanto gastaste y en que fue.' }
     const category = classifyExpense(text)
+    
+    // Alerta de Hype impulsivo
+    const trendingItem = snapshot.trends?.find((t: any) => desc.toLowerCase().includes(t.item_name.toLowerCase()) && t.hype_score >= 80)
+    if (trendingItem && !isAffirmative(previousAssistant)) {
+      return {
+        role: 'assistant',
+        content: `¡Ojo ahí, pana! Noto que "${trendingItem.item_name}" está súper de moda ahorita en ${trendingItem.platform} (nivel de viralidad: ${trendingItem.hype_score}/100). ¿Estás seguro de que lo necesitas o es una compra impulsiva? Responde "si" para registrarlo de todas formas.`,
+      }
+    }
+    
+    if (previousAssistant.includes('nivel de viralidad') && !isAffirmative(text)) {
+        return { role: 'assistant', content: 'Melo, pana. Mejor ahorramos esa plata.' }
+    }
+
     const isHormiga = isRecurringHormiga(text, amount, recentTx)
     if (isHormiga) {
       return {
@@ -451,7 +466,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     messages = Array.isArray(body.messages) ? body.messages : []
 
-    const [{ data: profileRows }, { data: recentTx }, { data: metas }, { data: budgets }, { data: groups }] = await Promise.all([
+    const [{ data: profileRows }, { data: recentTx }, { data: metas }, { data: budgets }, { data: groups }, { data: trends }] = await Promise.all([
       adminDB.from('profiles').select('*').eq('id', userId).limit(1),
       adminDB
         .from('transactions')
@@ -478,8 +493,28 @@ export async function POST(req: NextRequest) {
         .select('groups(*)')
         .eq('user_id', userId)
         .limit(8),
+      adminDB
+        .from('consumer_trends')
+        .select('*')
+        .order('hype_score', { ascending: false })
+        .limit(10),
     ])
     const profile = profileRows?.[0]
+
+    let activeTrends = trends;
+    // Fallback: Si la tabla no existe o está vacía (por ej. el usuario aún no corrió el SQL), 
+    // hacemos el web scraping en vivo para poder probar el agente de todas formas.
+    if (!activeTrends || activeTrends.length === 0) {
+      try {
+        const res = await fetch('http://localhost:3000/api/trends/fetch');
+        const json = await res.json();
+        if (json.success && json.data) {
+          activeTrends = json.data;
+        }
+      } catch (e) {
+        console.error("Fallback scraping falló", e);
+      }
+    }
 
     const groupNames = groups
       ?.map((row) => {
@@ -500,6 +535,7 @@ CONTEXTO ACTUAL DEL USUARIO:
 - Metas activas: ${metas?.map((m) => `${m.nombre}: $${m.monto_actual || 0}/$${m.monto_objetivo} hasta ${m.fecha_objetivo || 'sin fecha'}`).join(', ') || 'Ninguna'}
 - Presupuestos: ${budgets?.map((b) => `${b.categoria}: $${b.gastado_cop || 0}/$${b.limite_cop} (${b.mes}/${b.anio})`).join(', ') || 'Ninguno'}
 - Grupos: ${groupNames || 'Ninguno'}
+- Tendencias de consumo (Alertas de Hype): ${activeTrends?.map((t: any) => `${t.item_name} (Hype: ${t.hype_score}/100)`).join(', ') || 'Ninguna'}
 `
 
     const latestText = messages.filter((m) => m.role === 'user').at(-1)?.content.toLowerCase() || ''
@@ -525,33 +561,29 @@ CONTEXTO ACTUAL DEL USUARIO:
       || /grupo|grupos|historico|histórico|comparar|comparativo/.test(latestText)
 
     if (deterministicIntent) {
-      return NextResponse.json({ data: localFallback(messages, { profile, recentTx: recentTx || [], metas: metas || [], budgets: budgets || [], groupNames }) })
+      return NextResponse.json({ data: localFallback(messages, { profile, recentTx: recentTx || [], metas: metas || [], budgets: budgets || [], groupNames, trends: activeTrends || [] }) })
     }
 
-    if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'dummy_key_for_build') {
-      return NextResponse.json({ data: localFallback(messages, { profile, recentTx: recentTx || [], metas: metas || [], budgets: budgets || [], groupNames }) })
+    if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'dummy_key_for_build') {
+      return NextResponse.json({ data: localFallback(messages, { profile, recentTx: recentTx || [], metas: metas || [], budgets: budgets || [], groupNames, trends: activeTrends || [] }) })
     }
 
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: `${LUKAS_AI_ACTION_GUIDE}
-
-Fecha actual para calcular plazos: ${new Date().toISOString().split('T')[0]}.
-
-${context}`,
-        },
-        ...messages.map((m) => ({
-          role: m.role,
-          content: m.content,
-        })),
-      ],
-      stream: false,
+    const model = genAI.getGenerativeModel({ 
+      model: 'gemini-2.5-flash',
+      systemInstruction: `${LUKAS_AI_ACTION_GUIDE}\n\nFecha actual para calcular plazos: ${new Date().toISOString().split('T')[0]}.\n\n${context}`
     })
 
-    return NextResponse.json({ data: response.choices[0].message })
+    const geminiHistory = messages.slice(0, -1).map(m => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }]
+    }))
+
+    const chat = model.startChat({ history: geminiHistory })
+    const latestMessage = messages.length > 0 ? messages[messages.length - 1].content : 'Hola'
+    
+    const result = await chat.sendMessage(latestMessage)
+
+    return NextResponse.json({ data: { role: 'assistant', content: result.response.text() } })
   } catch (error: any) {
     if (error.status === 401 || error.code === 'invalid_api_key') {
       return NextResponse.json({ data: localFallback(messages) })

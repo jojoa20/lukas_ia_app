@@ -1,0 +1,21 @@
+# CONTEXTO DEL PROYECTO: LUKAS AI 
+**Visión del Negocio:** Lukas AI es un Robo-advisor financiero diseñado para la Generación Z en Colombia. No somos un banco tradicional; somos un "pana financiero" que habla de frente, usa jerga local (parce, lucas, nea) y gamifica las finanzas personales mediante un "FinScore".
+
+## 🚀 Propuesta de Valor y Funcionalidades Core
+Para que este MVP sea exitoso, el sistema debe soportar tres pilares fundamentales de interacción. NUNCA sacrifiques uno por implementar otro:
+
+1. **El Agente Inteligente (Lukas):** Un chat impulsado por Gemini 1.5 Flash. Analiza texto, clasifica gastos, da consejos y tiene memoria de las conversaciones.
+2. **Ingreso Manual de Datos (Fallback vital):** Como no estamos conectados directamente a las APIs bancarias, el usuario DEBE poder ingresar transacciones (ingresos/gastos) y metas de ahorro manualmente mediante formularios/botones en la UI en todo momento. NUNCA ocultes los botones de creación.
+3. **Lectura de Comprobantes (El Diferenciador - Visión IA):** La característica estrella. El sistema debe estar preparado para que el usuario suba capturas de pantalla de transferencias (ej. Nequi, Daviplata) o fotos de recibos físicos. Usaremos la capacidad multimodal de la IA para extraer el monto, fecha y concepto automáticamente.
+
+## 🛠️ Stack Tecnológico y Reglas de Arquitectura
+- **Frontend:** Next.js (App Router), Tailwind CSS, D3.js (para el gráfico de Gastos Hormiga). Todo componente interactivo o con hooks debe llevar `'use client'`.
+- **Autenticación:** Clerk (`@clerk/nextjs`).
+- **Base de Datos:** Supabase. 
+- **Regla de Seguridad MVP:** Para agilizar el desarrollo, la comunicación con Supabase en los Server Components/API Routes se hace usando el `SUPABASE_SERVICE_ROLE_KEY` (Bypass RLS), extrayendo el `userId` de Clerk (`auth()`) para filtrar las queries manualmente: `.eq('user_id', userId)`.
+- **IA:** Vercel AI SDK (`@ai-sdk/google`) conectado a Gemini Flash.
+
+## 🚨 Reglas Estrictas para el Agente (TÚ)
+1. **No rompas la UI:** Si vas a modificar una vista (ej. Metas o Historial), asegúrate de que el botón de "Añadir/Crear" siga visible y funcional, independientemente de si hay datos o si la lista está vacía.
+2. **Consistencia de Endpoints:** Usa siempre los 8 endpoints definidos (`/api/profile`, `/api/transactions`, `/api/metas`, etc.). No inventes rutas nuevas sin autorización.
+3. **Respuestas de la IA:** Cuando modifiques el comportamiento de Lukas, mantén su personalidad (conciso, colombiano, enfocado en finanzas).
