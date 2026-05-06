@@ -1,112 +1,131 @@
-import { NextResponse } from 'next/server';
-import { createClient, getAuthenticatedUser } from '@/lib/supabase/actions';
+import { NextRequest, NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { ensureProfile, getLukasUser } from '@/lib/lukas-user'
 
-// GET /api/leak-buster/graph
-// Genera los nodos y links del grafo D3 force-directed a partir de
-// transacciones reales del usuario, agrupadas por categoría/subcategoría.
-// Alimenta: LeakBusterGraph, MobileLeakBuster, HomeView
-// Query params:
-//   period: 'week' | 'month' | 'quarter' (default: 'month')
-//   alert_threshold: número COP (default: 100000)
-export async function GET(req: Request) {
-  let user, supabase;
-  try {
-    ({ supabase, user } = await getAuthenticatedUser());
-  } catch (authError) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+function normalizeCategory(category?: string, subcategory?: string) {
+  const sub = subcategory || ''
+  if (sub.startsWith('Fijos:')) return 'Fijos'
+  if (sub.startsWith('Salidas:')) return 'Salidas'
+  if (sub.startsWith('Ahorro:')) return 'Ahorro'
+  if (sub.startsWith('Susc.:')) return 'Susc.'
+  if (sub.startsWith('Hormiga:')) return 'Salidas'
 
-  const { searchParams } = new URL(req.url);
-  const period = searchParams.get('period') ?? 'month';
-  const alertThreshold = parseInt(searchParams.get('alert_threshold') ?? '100000');
+  const value = (category || '').toLowerCase()
+  if (value.includes('fijo') || value.includes('arriendo') || value.includes('servicio') || value.includes('mercado')) return 'Fijos'
+  if (value.includes('ahorro') || value.includes('meta') || value.includes('inversion')) return 'Ahorro'
+  if (value.includes('susc') || value.includes('netflix') || value.includes('spotify') || value.includes('prime')) return 'Susc.'
+  return 'Salidas'
+}
 
-  // Calcular fecha de inicio según el período
-  const now = new Date();
-  const from = new Date(now);
-  if (period === 'week') from.setDate(now.getDate() - 7);
-  else if (period === 'quarter') from.setMonth(now.getMonth() - 3);
-  else from.setDate(1); // primer día del mes actual
+export async function GET(req: NextRequest) {
+  const user = await getLukasUser()
+  const ensuredProfile = await ensureProfile(user)
+  const userId = ensuredProfile?.id || user.id
+  const adminDB = createAdminClient()
 
-  const fromStr = from.toISOString().split('T')[0];
+  const { searchParams } = new URL(req.url)
+  const period = searchParams.get('period') || 'month'
+  const alert_threshold = parseInt(searchParams.get('alert_threshold') || '100000')
 
-  const { data: transactions, error } = await supabase
+  const now = new Date()
+  const startDate = new Date()
+  if (period === 'week') startDate.setDate(now.getDate() - 7)
+  else if (period === 'month') startDate.setMonth(now.getMonth() - 1)
+  else if (period === 'quarter') startDate.setMonth(now.getMonth() - 3)
+
+  const { data: transactions, error } = await adminDB
     .from('transactions')
-    .select('monto, categoria, subcategoria, es_gasto_hormiga, tipo')
-    .eq('user_id', user.id)
-    .eq('tipo', 'gasto')
-    .gte('fecha_transaccion', fromStr);
+    .select('*')
+    .eq('user_id', userId)
+    .gte('fecha_transaccion', startDate.toISOString().split('T')[0])
 
-  if (error) {
-    return NextResponse.json(
-      { error: { code: 'DB_ERROR', message: error.message } },
-      { status: 500 }
-    );
-  }
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const txList = transactions ?? [];
+  const categories: Record<string, any> = {}
+  let total_gastado = 0
+  let monto_en_fugas = 0
+  let fugas_detectadas = 0
 
-  // Agrupar por categoría
-  const catMap = new Map<string, { total: number; subs: Map<string, { total: number; count: number; hormiga: number }> }>();
+  transactions?.forEach((tx) => {
+    if (tx.tipo !== 'gasto') return
 
-  for (const tx of txList) {
-    const cat = tx.categoria ?? 'otros';
-    const sub = tx.subcategoria ?? cat;
-    if (!catMap.has(cat)) catMap.set(cat, { total: 0, subs: new Map() });
-    const catEntry = catMap.get(cat)!;
-    catEntry.total += tx.monto;
-    if (!catEntry.subs.has(sub)) catEntry.subs.set(sub, { total: 0, count: 0, hormiga: 0 });
-    const subEntry = catEntry.subs.get(sub)!;
-    subEntry.total += tx.monto;
-    subEntry.count += 1;
-    if (tx.es_gasto_hormiga) subEntry.hormiga += tx.monto;
-  }
+    total_gastado += tx.monto
+    const categoryName = normalizeCategory(tx.categoria, tx.subcategoria)
+    const subName = (tx.subcategoria || tx.descripcion || tx.categoria || 'Movimiento').replace(/^(Fijos|Salidas|Ahorro|Susc\.|Hormiga):\s*/, '')
 
-  const totalGastado = [...catMap.values()].reduce((s, c) => s + c.total, 0);
-
-  // Construir nodos y links
-  const nodes: object[] = [
-    { id: 'center', type: 'center', label: 'Gastos', amount: totalGastado, radius: 50 },
-  ];
-  const links: object[] = [];
-  let fugasDetectadas = 0;
-  let montoEnFugas = 0;
-
-  for (const [catId, catData] of catMap) {
-    const catRadius = Math.max(20, Math.min(40, Math.round((catData.total / totalGastado) * 60)));
-    nodes.push({ id: `cat-${catId}`, type: 'category', label: catId, amount: catData.total, radius: catRadius });
-    links.push({ source: 'center', target: `cat-${catId}`, value: catData.total });
-
-    for (const [subId, subData] of catData.subs) {
-      const isAlert = subData.total > alertThreshold || subData.hormiga > 50000;
-      const subRadius = Math.max(12, Math.min(28, Math.round((subData.total / catData.total) * 40)));
-      nodes.push({
-        id: `sub-${catId}-${subId}`,
-        type: 'subcategory',
-        parent: `cat-${catId}`,
-        label: subId,
-        amount: subData.total,
-        transactions: subData.count,
-        isAlert,
-        radius: subRadius,
-      });
-      links.push({ source: `cat-${catId}`, target: `sub-${catId}-${subId}`, value: subData.total });
-      if (isAlert) {
-        fugasDetectadas++;
-        montoEnFugas += subData.total;
+    if (!categories[categoryName]) {
+      categories[categoryName] = {
+        id: `cat-${categoryName}`,
+        type: 'category',
+        label: categoryName,
+        amount: 0,
+        subcategories: {}
       }
     }
-  }
+
+    categories[categoryName].amount += tx.monto
+
+    if (!categories[categoryName].subcategories[subName]) {
+      categories[categoryName].subcategories[subName] = {
+        id: `sub-${categoryName}-${subName}`.replace(/\s+/g, '-'),
+        type: 'subcategory',
+        label: subName,
+        amount: 0,
+        isAlert: false,
+        isHormiga: false,
+        transactions: 0
+      }
+    }
+
+    const sub = categories[categoryName].subcategories[subName]
+    sub.amount += tx.monto
+    sub.transactions += 1
+    sub.isHormiga = sub.isHormiga || tx.es_gasto_hormiga
+  })
+
+  const nodes: any[] = [{ id: 'center', type: 'center', label: 'Mis Gastos', amount: total_gastado, radius: 50 }]
+  const links: any[] = []
+
+  Object.values(categories).forEach((cat: any) => {
+    nodes.push({
+      id: cat.id,
+      type: 'category',
+      label: cat.label,
+      amount: cat.amount,
+      radius: Math.max(20, Math.sqrt(cat.amount) / 100)
+    })
+    links.push({ source: 'center', target: cat.id, value: cat.amount })
+
+    Object.values(cat.subcategories).forEach((sub: any) => {
+      const isAlert = sub.amount > alert_threshold || sub.isHormiga || sub.transactions >= 3
+      if (isAlert) {
+        monto_en_fugas += sub.amount
+        fugas_detectadas += 1
+      }
+
+      nodes.push({
+        id: sub.id,
+        type: 'subcategory',
+        label: sub.label,
+        amount: sub.amount,
+        isAlert,
+        isHormiga: sub.isHormiga,
+        transactions: sub.transactions,
+        radius: Math.max(10, Math.sqrt(sub.amount) / 150)
+      })
+      links.push({ source: cat.id, target: sub.id, value: sub.amount })
+    })
+  })
 
   return NextResponse.json({
     data: {
       nodes,
       links,
       summary: {
-        total_gastado: totalGastado,
-        fugas_detectadas: fugasDetectadas,
-        monto_en_fugas: montoEnFugas,
-        period,
-      },
-    },
-  });
+        total_gastado,
+        fugas_detectadas,
+        monto_en_fugas
+      }
+    }
+  })
 }

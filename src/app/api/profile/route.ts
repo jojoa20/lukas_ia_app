@@ -1,78 +1,88 @@
-import { NextResponse } from 'next/server';
-import { createClient, getAuthenticatedUser } from '@/lib/supabase/actions';
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { ensureProfile, getLukasUser } from '@/lib/lukas-user'
 
-// GET /api/profile
-// Retorna el perfil completo del usuario autenticado.
-// Alimenta: HomeView (nombre), FinScoreDial (finscore), GamificationBanner (racha)
+const updateSchema = z.object({
+  full_name: z.string().min(1).max(100).optional(),
+  avatar_url: z.string().url().optional(),
+  ingreso_mensual_est: z.number().nonnegative().optional(),
+  meta_ahorro_mensual: z.number().nonnegative().optional(),
+  balance_actual: z.number().nonnegative().optional(),
+  pais: z.string().length(2).optional(),
+  moneda_base: z.string().length(3).optional(),
+})
+
 export async function GET() {
-  let user, supabase;
-  try {
-    ({ supabase, user } = await getAuthenticatedUser());
-  } catch (authError) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const user = await getLukasUser()
+  const ensuredProfile = await ensureProfile(user)
+  const adminDB = createAdminClient()
 
-  const { data, error } = await supabase
+  const { data, error } = await adminDB
     .from('profiles')
-    .select(`
-      id,
-      full_name,
-      email,
-      avatar_url,
-      pais,
-      moneda_base,
-      ingreso_mensual_est,
-      meta_ahorro_mensual,
-      finscore_actual,
-      racha_actual_dias
-    `)
-    .eq('id', user.id)
-    .single();
+    .select('*')
+    .eq('id', ensuredProfile?.id || user.id)
+    .limit(1)
 
   if (error) {
-    return NextResponse.json(
-      { error: { code: 'DB_ERROR', message: error.message } },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: { code: 'DB_ERROR', message: error.message } }, { status: 500 })
   }
 
-  return NextResponse.json({ data });
+  return NextResponse.json({
+    data: data?.[0] || {
+      id: user.id,
+      email: user.email,
+      full_name: user.name,
+      nombre_completo: user.name,
+      balance_actual: 0,
+      finscore_actual: 500,
+      racha_actual_dias: 0,
+      pais: 'CO',
+      moneda_base: 'COP',
+    }
+  })
 }
 
-// PUT /api/profile
-// Actualiza datos del perfil (nombre, ingreso, avatar, etc.)
-export async function PUT(req: Request) {
-  let user, supabase;
-  try {
-    ({ supabase, user } = await getAuthenticatedUser());
-  } catch (authError) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+export async function PUT(req: NextRequest) {
+  const user = await getLukasUser()
+  const ensuredProfile = await ensureProfile(user)
+  const adminDB = createAdminClient()
+
+  const body = await req.json()
+  const parsed = updateSchema.safeParse(body)
+
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
   }
 
-  const body = await req.json();
-
-  // TODO: agregar validación Zod aquí (Fase 2)
-  const allowedFields = ['full_name', 'avatar_url', 'ingreso_mensual_est', 'meta_ahorro_mensual', 'pais', 'moneda_base'];
-  const updateData: Record<string, unknown> = {};
-  for (const field of allowedFields) {
-    if (body[field] !== undefined) {
-      updateData[field] = body[field];
-    }
-  }
-
-  const { data, error } = await supabase
+  const { data, error } = await adminDB
     .from('profiles')
-    .update(updateData)
-    .eq('id', user.id)
+    .update(parsed.data)
+    .eq('id', ensuredProfile?.id || user.id)
     .select()
-    .single();
+    .limit(1)
 
-  if (error) {
-    return NextResponse.json(
-      { error: { code: 'DB_ERROR', message: error.message } },
-      { status: 500 }
-    );
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (!data || data.length === 0) {
+    const { data: upserted, error: upsertError } = await adminDB
+      .from('profiles')
+      .upsert([{
+        id: user.id,
+        email: user.email,
+        clerk_id: user.clerkId,
+        full_name: user.name,
+        finscore_actual: 500,
+        racha_actual_dias: 0,
+        pais: 'CO',
+        moneda_base: 'COP',
+        ...parsed.data,
+      }], { onConflict: 'id' })
+      .select()
+      .limit(1)
+
+    if (upsertError) return NextResponse.json({ error: upsertError.message }, { status: 500 })
+    return NextResponse.json({ data: upserted?.[0] || null })
   }
 
-  return NextResponse.json({ data });
+  return NextResponse.json({ data: data?.[0] || null })
 }
