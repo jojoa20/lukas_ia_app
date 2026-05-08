@@ -8,12 +8,13 @@ from supabase import create_client, Client, ClientOptions
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in environment")
-
-# Configure Supabase client to use the 'external_data' schema
-options = ClientOptions(schema="external_data")
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY, options=options)
+supabase = None
+if SUPABASE_URL and SUPABASE_KEY:
+    # Configure Supabase client to use the 'external_data' schema
+    options = ClientOptions(schema="external_data")
+    supabase = create_client(SUPABASE_URL, SUPABASE_KEY, options=options)
+else:
+    print("Warning: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing. Supabase insertion will be skipped for local testing.")
 
 def clean_price(price_str: str) -> float:
     """
@@ -152,6 +153,12 @@ def save_to_supabase(data: list):
         print("No data to save.")
         return
         
+    if supabase is None:
+        print("Skipping database insertion. Here is the scraped data:")
+        for item in data:
+            print(f"- {item['product_name']}: ${item['price']}")
+        return
+
     try:
         # Since we initialized the client with options=ClientOptions(schema="external_data"),
         # we can just use the table name.
