@@ -1,5 +1,7 @@
 "use client";
 
+import { SignInButton, UserButton, useUser } from "@clerk/nextjs";
+
 interface MobileHeaderProps {
   userName?: string;
   streak?: number;
@@ -7,6 +9,7 @@ interface MobileHeaderProps {
 
 export default function MobileHeader({ userName, streak = 0 }: MobileHeaderProps) {
   const isHighStreak = streak >= 7;
+  const { isLoaded, isSignedIn, user } = useUser();
 
   return (
     <div className="mb-4 mt-4">
@@ -15,14 +18,24 @@ export default function MobileHeader({ userName, streak = 0 }: MobileHeaderProps
         <div>
           <h1 className="text-[#EBB33E] font-black tracking-tight text-xl mb-0.5">lukas</h1>
           <h2 className="text-2xl font-bold">
-            ¡Qué más, <span className="text-[#EBB33E]">{userName ?? "Pana"}</span>!
+            ¡Qué más, <span className="text-[#EBB33E]">{user?.firstName || userName || "Pana"}</span>!
           </h2>
         </div>
-        {/* Avatar */}
-        <div className="w-11 h-11 rounded-full border-2 border-[#EBB33E] shadow-[0_0_12px_rgba(235,179,62,0.4)] bg-[#111827] flex items-center justify-center">
-          <svg className="w-5 h-5 text-[#EBB33E]" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
-          </svg>
+        {/* Avatar / Auth */}
+        <div className="w-11 h-11 rounded-full flex items-center justify-center overflow-hidden">
+          {isLoaded && isSignedIn ? (
+            <UserButton appearance={{ elements: { userButtonAvatarBox: "w-11 h-11 border-2 border-[#EBB33E] shadow-[0_0_12px_rgba(235,179,62,0.4)]" } }} />
+          ) : (
+            <div className="w-11 h-11 rounded-full border-2 border-[#EBB33E] shadow-[0_0_12px_rgba(235,179,62,0.4)] bg-[#111827] flex items-center justify-center text-[#EBB33E]">
+              <SignInButton mode="modal">
+                <button className="w-full h-full flex items-center justify-center">
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </SignInButton>
+            </div>
+          )}
         </div>
       </div>
 

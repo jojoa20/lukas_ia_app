@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import AlertModal from "./AlertModal";
 import { motion, animate, AnimatePresence } from "framer-motion";
+import { UserButton, SignInButton, useUser } from "@clerk/nextjs";
 
 interface Profile {
   full_name: string;
@@ -26,6 +27,7 @@ export default function HomeView({ onOpenAlert }: { onOpenAlert?: () => void }) 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const { isLoaded, isSignedIn, user } = useUser();
 
   useEffect(() => {
     fetch('/api/profile')
@@ -37,31 +39,35 @@ export default function HomeView({ onOpenAlert }: { onOpenAlert?: () => void }) 
       .catch(() => setLoading(false));
   }, []);
 
-  const name = profile?.full_name || "Parcero";
+  const name = user?.firstName || profile?.full_name || "Parcero";
   const score = profile?.finscore_actual || 0;
   const racha = profile?.racha_actual_dias || 0;
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95 }}
       className="flex flex-col p-5 pb-32"
     >
       <div className="flex justify-between items-center mb-6 mt-2">
-        <motion.h1 
-          className="text-white font-bold text-[28px] leading-tight"
-        >
+        <motion.h1 className="text-white font-bold text-[28px] leading-tight">
           ¡Qué más, Pana!<br/>
           <span className="text-[#D8A93F]">{name}!</span>
         </motion.h1>
 
-        <div className="flex flex-col items-center ml-4">
-          <div className="w-12 h-12 rounded-full border-2 border-[#D8A93F] shadow-[0_0_15px_rgba(216,169,63,0.4)] overflow-hidden bg-[#111827] flex items-center justify-center">
-            <svg className="w-6 h-6 text-[#D8A93F]" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
-            </svg>
-          </div>
+        <div className="w-12 h-12 rounded-full border-2 border-[#D8A93F] shadow-[0_0_15px_rgba(216,169,63,0.4)] overflow-hidden bg-[#111827] flex items-center justify-center">
+          {isLoaded && isSignedIn ? (
+            <UserButton appearance={{ elements: { userButtonAvatarBox: "w-full h-full" } }} />
+          ) : (
+            <SignInButton mode="modal">
+              <button className="w-full h-full flex items-center justify-center">
+                <svg className="w-6 h-6 text-[#D8A93F]" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </SignInButton>
+          )}
         </div>
       </div>
 
