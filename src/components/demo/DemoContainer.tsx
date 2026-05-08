@@ -9,13 +9,21 @@ import MetasView from "./MetasView";
 import HistorialView from "./HistorialView";
 import BottomNav from "./BottomNav";
 
+interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+}
+
 export default function DemoContainer() {
   const [activeTab, setActiveTab] = useState("home");
   const [showSplash, setShowSplash] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const handleNavigate = (page: string, opts?: any) => {
-    // Map AI page names to tab names
+  // Chat history lives HERE so it persists when switching tabs
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+
+  const handleNavigate = (page: string, _opts?: any) => {
     const pageMap: Record<string, string> = {
       home: "home",
       chat: "chat",
@@ -23,8 +31,7 @@ export default function DemoContainer() {
       historial: "historial",
       analytics: "analytics",
     };
-    const tab = pageMap[page] || page;
-    setActiveTab(tab);
+    setActiveTab(pageMap[page] || page);
   };
 
   const handleRefreshData = () => {
@@ -44,6 +51,8 @@ export default function DemoContainer() {
           {activeTab === "chat" && (
             <ChatView
               key="chat"
+              messages={chatMessages}
+              onMessagesChange={setChatMessages}
               onNavigate={handleNavigate}
               onRefreshData={handleRefreshData}
             />

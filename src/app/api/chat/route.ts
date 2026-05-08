@@ -512,15 +512,13 @@ export async function POST(req: NextRequest) {
     const profile = profileRows?.[0]
 
     let activeTrends = trends;
-    // Fallback: Si la tabla no existe o está vacía (por ej. el usuario aún no corrió el SQL), 
-    // hacemos el web scraping en vivo para poder probar el agente de todas formas.
+    // Fallback scraping de tendencias si la tabla está vacía
     if (!activeTrends || activeTrends.length === 0) {
       try {
-        const res = await fetch('http://localhost:3000/api/trends/fetch');
+        const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000';
+        const res = await fetch(`${baseUrl}/api/trends/fetch`);
         const json = await res.json();
-        if (json.success && json.data) {
-          activeTrends = json.data;
-        }
+        if (json.success && json.data) activeTrends = json.data;
       } catch (e) {
         console.error("Fallback scraping falló", e);
       }
@@ -534,6 +532,43 @@ export async function POST(req: NextRequest) {
       .filter(Boolean)
       .join(', ')
 
+    // ==================================================================
+    // COMPARADOR DE PRECIOS: si el usuario menciona un gasto en un producto
+    // buscamos el precio de referencia en Éxito para que Lukas comente.
+    // ==================================================================
+    let priceContext = ''
+    const latestTextRaw = messages.filter((m) => m.role === 'user').at(-1)?.content || ''
+    const isSpendingMention = /gast|pagu[eé]|compr[eé]|compr[oó]|gasté|compré/i.test(latestTextRaw)
+    const detectedAmount = parseAmount(latestTextRaw.toLowerCase())
+    
+    // Extraer descripción del producto de la frase
+    const productMatch = latestTextRaw.match(/(?:en|de|por)\s+([\w\sáéíóúñü]+?)(?:\s+por|\s+en|\s*$)/i)
+    const productQuery = productMatch?.[1]?.trim()
+
+    if (isSpendingMention && detectedAmount && productQuery && productQuery.length > 3) {
+      try {
+        const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000';
+        const priceRes = await fetch(`${baseUrl}/api/prices/exito?q=${encodeURIComponent(productQuery)}`, {
+          signal: AbortSignal.timeout(6000)
+        });
+        const priceJson = await priceRes.json();
+        if (priceJson.success && priceJson.avg_price) {
+          const userPaid = detectedAmount;
+          const exitoAvg = priceJson.avg_price;
+          const diff = userPaid - exitoAvg;
+          const diffPct = Math.round(Math.abs(diff) / exitoAvg * 100);
+          const verdict = diff > exitoAvg * 0.15
+            ? `CARO: el usuario pagó ${diffPct}% más caro que el promedio de Éxito`
+            : diff < -exitoAvg * 0.15
+            ? `BARATO: el usuario pagó ${diffPct}% más barato que el promedio de Éxito`
+            : 'PRECIO JUSTO: el precio pagado está dentro del rango normal de Éxito';
+          priceContext = `\n- COMPARACIÓN DE PRECIO para "${productQuery}": el usuario pagó $${userPaid.toLocaleString()} COP. En Éxito el precio promedio es $${exitoAvg.toLocaleString()} COP (rango: $${priceJson.min_price?.toLocaleString()} - $${priceJson.max_price?.toLocaleString()}). VEREDICTO: ${verdict}. USA ESTA INFO para comentar si fue una buena compra o no y si debe registrar el gasto.`
+        }
+      } catch (e) {
+        // No bloquear si Éxito no responde
+      }
+    }
+
     const context = `
 CONTEXTO ACTUAL DEL USUARIO:
 - Usuario: ${profile?.full_name || profile?.nombre_completo || user.name}
@@ -545,10 +580,10 @@ CONTEXTO ACTUAL DEL USUARIO:
 - Metas activas: ${metas?.map((m) => `${m.nombre}: $${m.monto_actual || 0}/$${m.monto_objetivo} hasta ${m.fecha_objetivo || 'sin fecha'}`).join(', ') || 'Ninguna'}
 - Presupuestos: ${budgets?.map((b) => `${b.categoria}: $${b.gastado_cop || 0}/$${b.limite_cop} (${b.mes}/${b.anio})`).join(', ') || 'Ninguno'}
 - Grupos: ${groupNames || 'Ninguno'}
-- Tendencias de consumo (Alertas de Hype): ${activeTrends?.map((t: any) => `${t.item_name} (Hype: ${t.hype_score}/100)`).join(', ') || 'Ninguna'}
+- Tendencias de consumo (Alertas de Hype): ${activeTrends?.map((t: any) => `${t.item_name} (Hype: ${t.hype_score}/100)`).join(', ') || 'Ninguna'}${priceContext}
 `
 
-    const latestText = messages.filter((m) => m.role === 'user').at(-1)?.content.toLowerCase() || ''
+    const latestText = latestTextRaw.toLowerCase()
     const previousAssistant = messages.filter((m) => m.role === 'assistant').at(-1)?.content.toLowerCase() || ''
     if (previousAssistant.includes('se borrara el saldo anterior') && isAffirmative(latestText)) {
       const previousAmount = parseAmount(previousAssistant)

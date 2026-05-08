@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 
-interface ChatMessage {
+export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
@@ -30,14 +30,20 @@ function parseActions(text: string): any[] {
 }
 
 interface ChatViewProps {
+  messages: ChatMessage[];
+  onMessagesChange: (messages: ChatMessage[]) => void;
   onNavigate?: (page: string, opts?: any) => void;
   onRefreshData?: () => void;
 }
 
-export default function ChatView({ onNavigate, onRefreshData }: ChatViewProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+export default function ChatView({
+  messages,
+  onMessagesChange,
+  onNavigate,
+  onRefreshData,
+}: ChatViewProps) {
+  const [input, setInputState] = React.useState("");
+  const [isLoading, setIsLoading] = React.useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -96,7 +102,7 @@ export default function ChatView({ onNavigate, onRefreshData }: ChatViewProps) {
         if (action.type === "SET_CURRENT_BALANCE") {
           try {
             await fetch("/api/profile", {
-              method: "PATCH",
+              method: "PUT",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ balance_actual: action.saldo }),
             });
@@ -134,7 +140,7 @@ export default function ChatView({ onNavigate, onRefreshData }: ChatViewProps) {
     if (!input.trim() || isLoading) return;
 
     const userText = input.trim();
-    setInput("");
+    setInputState("");
 
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
@@ -142,7 +148,7 @@ export default function ChatView({ onNavigate, onRefreshData }: ChatViewProps) {
       content: userText,
     };
     const updatedMessages = [...messages, userMsg];
-    setMessages(updatedMessages);
+    onMessagesChange(updatedMessages);
     setIsLoading(true);
 
     try {
@@ -161,26 +167,22 @@ export default function ChatView({ onNavigate, onRefreshData }: ChatViewProps) {
       const rawContent: string =
         json?.data?.content || json?.error || "Lukas no pudo responder. Intenta de nuevo.";
 
-      // Parse and execute actions before showing message
       const actions = parseActions(rawContent);
       const visibleContent = cleanContent(rawContent);
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: (Date.now() + 1).toString(),
-          role: "assistant",
-          content: visibleContent,
-        },
-      ]);
+      const assistantMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: visibleContent,
+      };
+      onMessagesChange([...updatedMessages, assistantMsg]);
 
-      // Execute DB actions after showing the message
       if (actions.length > 0) {
         await executeActions(actions);
       }
     } catch {
-      setMessages((prev) => [
-        ...prev,
+      onMessagesChange([
+        ...updatedMessages,
         {
           id: (Date.now() + 1).toString(),
           role: "assistant",
@@ -194,18 +196,37 @@ export default function ChatView({ onNavigate, onRefreshData }: ChatViewProps) {
 
   return (
     <div className="flex flex-col h-full p-4 pb-32">
-      <h1 className="text-2xl font-bold mb-6 text-[#D8A93F]">Habla con Lukas</h1>
+      <div className="flex items-center justify-between mb-5">
+        <h1 className="text-2xl font-bold text-[#D8A93F]">Habla con Lukas</h1>
+        {messages.length > 0 && (
+          <button
+            onClick={() => onMessagesChange([])}
+            className="text-white/30 text-xs hover:text-white/60 transition-colors"
+          >
+            Limpiar chat
+          </button>
+        )}
+      </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-4 mb-4 no-scrollbar">
         {messages.length === 0 && !isLoading && (
           <div className="flex justify-start">
             <div className="max-w-[85%] p-4 rounded-2xl bg-white/10 text-white rounded-tl-none border border-white/10">
-              <p className="text-sm leading-relaxed">
-                ¡Hola! Soy Lukas, tu pana financiero. 🤙
-              </p>
+              <p className="text-sm leading-relaxed font-semibold">¡Hola! Soy Lukas 🤙</p>
               <p className="text-sm leading-relaxed mt-2 opacity-70">
-                Puedo ayudarte a registrar gastos, crear metas de ahorro, ver tu saldo y más. ¿En qué te ayudo hoy?
+                Dime lo que gastaste, crea metas, actualiza tu saldo o pregúntame cualquier cosa de tus finanzas.
               </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {["Gasté 50 mil en mercado", "Crea una meta de ahorro", "¿Cuál es mi saldo?"].map((tip) => (
+                  <button
+                    key={tip}
+                    onClick={() => setInputState(tip)}
+                    className="text-[11px] bg-white/5 border border-white/10 text-white/60 px-3 py-1.5 rounded-full hover:bg-white/10 transition"
+                  >
+                    {tip}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -235,10 +256,14 @@ export default function ChatView({ onNavigate, onRefreshData }: ChatViewProps) {
             animate={{ opacity: 1, x: 0 }}
             className="flex justify-start"
           >
-            <div className="p-4 rounded-2xl bg-white/10 text-white rounded-tl-none border border-white/10 flex items-center gap-2">
-              <span className="w-2 h-2 bg-[#D8A93F] rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-              <span className="w-2 h-2 bg-[#D8A93F] rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-              <span className="w-2 h-2 bg-[#D8A93F] rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+            <div className="p-4 rounded-2xl bg-white/10 text-white rounded-tl-none border border-white/10 flex items-center gap-1.5">
+              {[0, 150, 300].map((delay) => (
+                <span
+                  key={delay}
+                  className="w-2 h-2 bg-[#D8A93F] rounded-full animate-bounce"
+                  style={{ animationDelay: `${delay}ms` }}
+                />
+              ))}
             </div>
           </motion.div>
         )}
@@ -250,7 +275,7 @@ export default function ChatView({ onNavigate, onRefreshData }: ChatViewProps) {
       >
         <input
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => setInputState(e.target.value)}
           placeholder="Dime un gasto, crea una meta..."
           className="flex-1 bg-transparent border-none outline-none text-white px-4 text-sm"
           disabled={isLoading}
