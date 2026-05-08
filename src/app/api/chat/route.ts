@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import OpenAI from 'openai'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureProfile, getLukasUser } from '@/lib/lukas-user'
 import { LUKAS_AI_ACTION_GUIDE } from '@/lib/lukas-ai-system'
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'dummy_key_for_build' })
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'dummy_key_for_build')
 
 type ChatMessage = {
   role: 'user' | 'assistant'
@@ -17,6 +17,7 @@ type FinancialSnapshot = {
   metas?: any[]
   budgets?: any[]
   groupNames?: string
+  trends?: any[]
 }
 
 function formatCOP(value: number | null | undefined) {
@@ -69,15 +70,25 @@ function menuHelpResponse(text: string) {
 }
 
 function parseAmount(text: string) {
-  const normalized = text.toLowerCase().replace(/\./g, '').replace(/,/g, '')
-  const match = normalized.match(/(\d+(?:\.\d+)?)\s*(millones|millon|palos|m|mil|k)?/)
+  const normalized = text.toLowerCase()
+    .replace(/\$/g, '')
+    .replace(/\./g, '')   // remove thousand separators like 30.000
+    .replace(/,/g, '.')   // convert decimal comma to dot
+
+  // Match pattern: number + optional unit word
+  const match = normalized.match(/(\d+(?:\.\d+)?)\s*(millones?|palos?|m(?=\b)|miles?|mil(?=\b)|k(?=\b))?/)
   if (!match) return null
 
   const value = Number(match[1])
   const unit = match[2]
   if (Number.isNaN(value)) return null
-  if (unit === 'millones' || unit === 'millon' || unit === 'palos' || unit === 'm') return value * 1000000
-  if (unit === 'mil' || unit === 'k') return value * 1000
+
+  if (unit === 'millones' || unit === 'millon' || unit === 'palos' || unit === 'palo' || unit === 'm') {
+    return value * 1_000_000
+  }
+  if (unit === 'miles' || unit === 'mil' || unit === 'k') {
+    return value * 1_000
+  }
   return value
 }
 
@@ -374,6 +385,20 @@ function localFallback(messages: ChatMessage[], snapshot: FinancialSnapshot = {}
     const desc = extractDescription(text)
     if (!amount) return { role: 'assistant', content: 'De una, pana. Decime cuanto gastaste y en que fue.' }
     const category = classifyExpense(text)
+    
+    // Alerta de Hype impulsivo
+    const trendingItem = snapshot.trends?.find((t: any) => desc.toLowerCase().includes(t.item_name.toLowerCase()) && t.hype_score >= 80)
+    if (trendingItem && !isAffirmative(previousAssistant)) {
+      return {
+        role: 'assistant',
+        content: `¡Ojo ahí, pana! Noto que "${trendingItem.item_name}" está súper de moda ahorita en ${trendingItem.platform} (nivel de viralidad: ${trendingItem.hype_score}/100). ¿Estás seguro de que lo necesitas o es una compra impulsiva? Responde "si" para registrarlo de todas formas.`,
+      }
+    }
+    
+    if (previousAssistant.includes('nivel de viralidad') && !isAffirmative(text)) {
+        return { role: 'assistant', content: 'Melo, pana. Mejor ahorramos esa plata.' }
+    }
+
     const isHormiga = isRecurringHormiga(text, amount, recentTx)
     if (isHormiga) {
       return {
@@ -451,7 +476,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     messages = Array.isArray(body.messages) ? body.messages : []
 
-    const [{ data: profileRows }, { data: recentTx }, { data: metas }, { data: budgets }, { data: groups }] = await Promise.all([
+    const [{ data: profileRows }, { data: recentTx }, { data: metas }, { data: budgets }, { data: groups }, { data: trends }] = await Promise.all([
       adminDB.from('profiles').select('*').eq('id', userId).limit(1),
       adminDB
         .from('transactions')
@@ -478,8 +503,26 @@ export async function POST(req: NextRequest) {
         .select('groups(*)')
         .eq('user_id', userId)
         .limit(8),
+      adminDB
+        .from('consumer_trends')
+        .select('*')
+        .order('hype_score', { ascending: false })
+        .limit(10),
     ])
     const profile = profileRows?.[0]
+
+    let activeTrends = trends;
+    // Fallback scraping de tendencias si la tabla está vacía
+    if (!activeTrends || activeTrends.length === 0) {
+      try {
+        const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000';
+        const res = await fetch(`${baseUrl}/api/trends/fetch`);
+        const json = await res.json();
+        if (json.success && json.data) activeTrends = json.data;
+      } catch (e) {
+        console.error("Fallback scraping falló", e);
+      }
+    }
 
     const groupNames = groups
       ?.map((row) => {
@@ -488,6 +531,43 @@ export async function POST(req: NextRequest) {
       })
       .filter(Boolean)
       .join(', ')
+
+    // ==================================================================
+    // COMPARADOR DE PRECIOS: si el usuario menciona un gasto en un producto
+    // buscamos el precio de referencia en Éxito para que Lukas comente.
+    // ==================================================================
+    let priceContext = ''
+    const latestTextRaw = messages.filter((m) => m.role === 'user').at(-1)?.content || ''
+    const isSpendingMention = /gast|pagu[eé]|compr[eé]|compr[oó]|gasté|compré/i.test(latestTextRaw)
+    const detectedAmount = parseAmount(latestTextRaw.toLowerCase())
+    
+    // Extraer descripción del producto de la frase
+    const productMatch = latestTextRaw.match(/(?:en|de|por)\s+([\w\sáéíóúñü]+?)(?:\s+por|\s+en|\s*$)/i)
+    const productQuery = productMatch?.[1]?.trim()
+
+    if (isSpendingMention && detectedAmount && productQuery && productQuery.length > 3) {
+      try {
+        const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000';
+        const priceRes = await fetch(`${baseUrl}/api/prices/exito?q=${encodeURIComponent(productQuery)}`, {
+          signal: AbortSignal.timeout(6000)
+        });
+        const priceJson = await priceRes.json();
+        if (priceJson.success && priceJson.avg_price) {
+          const userPaid = detectedAmount;
+          const exitoAvg = priceJson.avg_price;
+          const diff = userPaid - exitoAvg;
+          const diffPct = Math.round(Math.abs(diff) / exitoAvg * 100);
+          const verdict = diff > exitoAvg * 0.15
+            ? `CARO: el usuario pagó ${diffPct}% más caro que el promedio de Éxito`
+            : diff < -exitoAvg * 0.15
+            ? `BARATO: el usuario pagó ${diffPct}% más barato que el promedio de Éxito`
+            : 'PRECIO JUSTO: el precio pagado está dentro del rango normal de Éxito';
+          priceContext = `\n- COMPARACIÓN DE PRECIO para "${productQuery}": el usuario pagó $${userPaid.toLocaleString()} COP. En Éxito el precio promedio es $${exitoAvg.toLocaleString()} COP (rango: $${priceJson.min_price?.toLocaleString()} - $${priceJson.max_price?.toLocaleString()}). VEREDICTO: ${verdict}. USA ESTA INFO para comentar si fue una buena compra o no y si debe registrar el gasto.`
+        }
+      } catch (e) {
+        // No bloquear si Éxito no responde
+      }
+    }
 
     const context = `
 CONTEXTO ACTUAL DEL USUARIO:
@@ -500,9 +580,10 @@ CONTEXTO ACTUAL DEL USUARIO:
 - Metas activas: ${metas?.map((m) => `${m.nombre}: $${m.monto_actual || 0}/$${m.monto_objetivo} hasta ${m.fecha_objetivo || 'sin fecha'}`).join(', ') || 'Ninguna'}
 - Presupuestos: ${budgets?.map((b) => `${b.categoria}: $${b.gastado_cop || 0}/$${b.limite_cop} (${b.mes}/${b.anio})`).join(', ') || 'Ninguno'}
 - Grupos: ${groupNames || 'Ninguno'}
+- Tendencias de consumo (Alertas de Hype): ${activeTrends?.map((t: any) => `${t.item_name} (Hype: ${t.hype_score}/100)`).join(', ') || 'Ninguna'}${priceContext}
 `
 
-    const latestText = messages.filter((m) => m.role === 'user').at(-1)?.content.toLowerCase() || ''
+    const latestText = latestTextRaw.toLowerCase()
     const previousAssistant = messages.filter((m) => m.role === 'assistant').at(-1)?.content.toLowerCase() || ''
     if (previousAssistant.includes('se borrara el saldo anterior') && isAffirmative(latestText)) {
       const previousAmount = parseAmount(previousAssistant)
@@ -525,33 +606,29 @@ CONTEXTO ACTUAL DEL USUARIO:
       || /grupo|grupos|historico|histórico|comparar|comparativo/.test(latestText)
 
     if (deterministicIntent) {
-      return NextResponse.json({ data: localFallback(messages, { profile, recentTx: recentTx || [], metas: metas || [], budgets: budgets || [], groupNames }) })
+      return NextResponse.json({ data: localFallback(messages, { profile, recentTx: recentTx || [], metas: metas || [], budgets: budgets || [], groupNames, trends: activeTrends || [] }) })
     }
 
-    if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'dummy_key_for_build') {
-      return NextResponse.json({ data: localFallback(messages, { profile, recentTx: recentTx || [], metas: metas || [], budgets: budgets || [], groupNames }) })
+    if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'dummy_key_for_build') {
+      return NextResponse.json({ data: localFallback(messages, { profile, recentTx: recentTx || [], metas: metas || [], budgets: budgets || [], groupNames, trends: activeTrends || [] }) })
     }
 
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: `${LUKAS_AI_ACTION_GUIDE}
-
-Fecha actual para calcular plazos: ${new Date().toISOString().split('T')[0]}.
-
-${context}`,
-        },
-        ...messages.map((m) => ({
-          role: m.role,
-          content: m.content,
-        })),
-      ],
-      stream: false,
+    const model = genAI.getGenerativeModel({ 
+      model: 'gemini-2.5-flash',
+      systemInstruction: `${LUKAS_AI_ACTION_GUIDE}\n\nFecha actual para calcular plazos: ${new Date().toISOString().split('T')[0]}.\n\n${context}`
     })
 
-    return NextResponse.json({ data: response.choices[0].message })
+    const geminiHistory = messages.slice(0, -1).map(m => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }]
+    }))
+
+    const chat = model.startChat({ history: geminiHistory })
+    const latestMessage = messages.length > 0 ? messages[messages.length - 1].content : 'Hola'
+    
+    const result = await chat.sendMessage(latestMessage)
+
+    return NextResponse.json({ data: { role: 'assistant', content: result.response.text() } })
   } catch (error: any) {
     if (error.status === 401 || error.code === 'invalid_api_key') {
       return NextResponse.json({ data: localFallback(messages) })

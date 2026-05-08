@@ -1,32 +1,50 @@
-﻿"use client";
-import React, { useState, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { addTransaction, addGastoHormiga, createBudget } from "@/lib/supabase/actions";
-import { AudioLines } from "lucide-react";
+"use client";
 
-interface Message {
+import React, { useEffect, useRef, useCallback } from "react";
+import { motion } from "framer-motion";
+
+export interface ChatMessage {
+  id: string;
   role: "user" | "assistant";
   content: string;
-  isActionExecuted?: boolean;
+}
+
+// Strips <action>...</action> tags from visible text
+function cleanContent(text: string): string {
+  return text.replace(/<action>[\s\S]*?<\/action>/g, "").trim();
+}
+
+// Extracts all action objects from the response
+function parseActions(text: string): any[] {
+  const actions: any[] = [];
+  const regex = /<action>([\s\S]*?)<\/action>/g;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    try {
+      actions.push(JSON.parse(match[1]));
+    } catch {
+      // ignore malformed JSON
+    }
+  }
+  return actions;
 }
 
 interface ChatViewProps {
-  onNavigate?: (page: string, options?: { viewMode?: "groups" | "compare"; month?: string }) => void;
+  messages: ChatMessage[];
+  onMessagesChange: (messages: ChatMessage[]) => void;
+  onNavigate?: (page: string, opts?: any) => void;
+  onRefreshData?: () => void;
 }
 
-export default function ChatView({ onNavigate }: ChatViewProps) {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: "assistant",
-      content: "Hola. Soy Lukas, tu asistente financiero inteligente. ¿En qué puedo orientarte hoy?"
-    }
-  ]);
-  const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
+export default function ChatView({
+  messages,
+  onMessagesChange,
+  onNavigate,
+  onRefreshData,
+}: ChatViewProps) {
+  const [input, setInputState] = React.useState("");
+  const [isLoading, setIsLoading] = React.useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const mediaRecorder = useRef<MediaRecorder | null>(null);
-  const audioChunks = useRef<Blob[]>([]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -34,217 +52,241 @@ export default function ChatView({ onNavigate }: ChatViewProps) {
     }
   }, [messages, isLoading]);
 
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      mediaRecorder.current = recorder;
-      audioChunks.current = [];
-      recorder.ondataavailable = (e) => audioChunks.current.push(e.data);
-      recorder.onstop = async () => {
-        const blob = new Blob(audioChunks.current, { type: "audio/webm" });
-        const formData = new FormData();
-        formData.append("audio", blob);
-        setIsLoading(true);
-        try {
-          const res = await fetch("/api/voice/stt", { method: "POST", body: formData });
-          const { text } = await res.json();
-          if (text) { setInput(text); await processChatResponse(text); }
-        } catch (e) { console.error(e); }
-        finally { setIsLoading(false); }
-        stream.getTracks().forEach(t => t.stop());
-      };
-      recorder.start();
-      setIsRecording(true);
-    } catch (e) { console.error(e); }
-  };
+  const executeActions = useCallback(
+    async (actions: any[]) => {
+      for (const action of actions) {
+        if (action.type === "NAVIGATE" && onNavigate) {
+          onNavigate(action.page, action);
+        }
 
-  const stopRecording = () => {
-    if (mediaRecorder.current && isRecording) {
-      mediaRecorder.current.stop();
-      setIsRecording(false);
-    }
-  };
+        if (action.type === "ADD_TRANSACTION" || action.type === "ADD_GASTO_HORMIGA") {
+          try {
+            await fetch("/api/transactions", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                monto: action.monto,
+                tipo: action.tipo || "gasto",
+                categoria: action.categoria || "otro",
+                subcategoria: action.subcategoria || action.descripcion || "",
+                descripcion: action.descripcion || "",
+                es_gasto_hormiga: action.type === "ADD_GASTO_HORMIGA" || action.es_gasto_hormiga || false,
+                metodo_entrada: "ai",
+              }),
+            });
+            onRefreshData?.();
+          } catch (e) {
+            console.error("Error saving transaction:", e);
+          }
+        }
+
+        if (action.type === "CREATE_GOAL") {
+          try {
+            await fetch("/api/metas", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                nombre: action.nombre,
+                monto_objetivo: action.monto,
+                fecha_objetivo: action.fecha_objetivo || undefined,
+                prioridad: action.prioridad || 2,
+                tipo: "ahorro",
+              }),
+            });
+            onRefreshData?.();
+          } catch (e) {
+            console.error("Error creating goal:", e);
+          }
+        }
+
+        if (action.type === "SET_CURRENT_BALANCE") {
+          try {
+            await fetch("/api/profile", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ balance_actual: action.saldo }),
+            });
+            onRefreshData?.();
+          } catch (e) {
+            console.error("Error updating balance:", e);
+          }
+        }
+
+        if (action.type === "CREATE_BUDGET") {
+          try {
+            const now = new Date();
+            await fetch("/api/budgets", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                categoria: action.categoria,
+                limite_cop: action.limite_cop,
+                mes: now.getMonth() + 1,
+                anio: now.getFullYear(),
+              }),
+            });
+            onRefreshData?.();
+          } catch (e) {
+            console.error("Error creating budget:", e);
+          }
+        }
+      }
+    },
+    [onNavigate, onRefreshData]
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
-    const text = input;
-    setInput("");
-    await processChatResponse(text);
-  };
 
-  const processChatResponse = async (text: string) => {
-    setMessages(prev => [...prev, { role: "user", content: text }]);
+    const userText = input.trim();
+    setInputState("");
+
+    const userMsg: ChatMessage = {
+      id: Date.now().toString(),
+      role: "user",
+      content: userText,
+    };
+    const updatedMessages = [...messages, userMsg];
+    onMessagesChange(updatedMessages);
     setIsLoading(true);
+
     try {
-      const response = await fetch("/api/chat", {
+      const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: [...messages, { role: "user", content: text }].map(m => ({
+          messages: updatedMessages.map((m) => ({
             role: m.role,
-            content: m.content
-          }))
-        })
+            content: m.content,
+          })),
+        }),
       });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Error");
 
-      let assistantContent = result.data?.content || "...";
-      let executionLog = "";
+      const json = await res.json();
+      const rawContent: string =
+        json?.data?.content || json?.error || "Lukas no pudo responder. Intenta de nuevo.";
 
-      const actionRegex = /[<\[]action[>\]]([\s\S]*?)[<\[]\/action[>\]]/gi;
-      let match;
-      
-      while ((match = actionRegex.exec(assistantContent)) !== null) {
-        try {
-          const actionData = JSON.parse(match[1]);
-          if (actionData.type === "ADD_TRANSACTION") { 
-            const res = await addTransaction(actionData); 
-            if (!res.success) executionLog += " (Error en transacción)";
-          }
-          else if (actionData.type === "ADD_GASTO_HORMIGA") { 
-            const res = await addGastoHormiga(actionData); 
-            if (!res.success) executionLog += " (Error en gasto)";
-          }
-          else if (actionData.type === "CREATE_GOAL") { 
-            const res = await fetch("/api/metas", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              credentials: "include",
-              cache: "no-store",
-              body: JSON.stringify({
-                nombre: actionData.nombre,
-                tipo: "ahorro",
-                monto_objetivo: Number(actionData.monto) || 0,
-                fecha_objetivo: actionData.fecha_objetivo,
-                prioridad: Number(actionData.prioridad) || 2,
-                emoji: "Meta",
-              }),
-            });
-            if (!res.ok) {
-              const result = await res.json().catch(() => null);
-              executionLog += " (Error: " + (result?.error?.message || result?.error || "No se pudo crear la meta") + ")";
-            }
-          }
-          else if (actionData.type === "CREATE_BUDGET") {
-            const res = await createBudget(actionData);
-            if (!res.success) executionLog += " (Error: " + res.error + ")";
-          }
-          else if (actionData.type === "CREATE_GROUP") {
-            const res = await fetch("/api/groups", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              credentials: "include",
-              cache: "no-store",
-              body: JSON.stringify({
-                nombre: actionData.nombre,
-                tipo: actionData.tipo || "amigos",
-                invite_email: actionData.invite_email || "",
-              }),
-            });
-            if (res.status === 401) {
-              window.location.href = "/sign-in";
-              return;
-            }
-            const result = await res.json().catch(() => null);
-            if (!res.ok) executionLog += " (Error: " + (result?.error?.message || result?.error || "No se pudo crear el grupo") + ")";
-          }
-          else if (actionData.type === "SET_GROUP_PERSONAL_BUDGET") {
-            const res = await fetch("/api/groups", {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              credentials: "include",
-              cache: "no-store",
-              body: JSON.stringify({ personal_budget: Number(actionData.monto) || 0 }),
-            });
-            if (res.status === 401) {
-              window.location.href = "/sign-in";
-              return;
-            }
-            const result = await res.json().catch(() => null);
-            if (!res.ok) executionLog += " (Error: " + (result?.error?.message || result?.error || "No se pudo asignar el presupuesto") + ")";
-          }
-          else if (actionData.type === "SET_CURRENT_BALANCE") {
-            const res = await fetch("/api/profile", {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              credentials: "include",
-              body: JSON.stringify({ balance_actual: Math.max(0, Number(actionData.saldo) || 0) })
-            });
-            if (!res.ok) executionLog += " (Error actualizando saldo)";
-          }
-          else if (actionData.type === "NAVIGATE" && onNavigate) { 
-            onNavigate(actionData.page, { viewMode: actionData.viewMode, month: actionData.month }); 
-          }
-        } catch (err) { 
-          executionLog += " (Error técnico)";
-        }
+      const actions = parseActions(rawContent);
+      const visibleContent = cleanContent(rawContent);
+
+      const assistantMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: visibleContent,
+      };
+      onMessagesChange([...updatedMessages, assistantMsg]);
+
+      if (actions.length > 0) {
+        await executeActions(actions);
       }
-
-      const cleanContent = assistantContent.replace(/[<\[]action[>\]][\s\S]*?[<\[]\/action[>\]]/gi, "").replace(/<\/?[^>]+(>|$)/g, "").trim();
-
-      setMessages(prev => [...prev, { role: "assistant", content: (cleanContent || "Listo.") + executionLog, isActionExecuted: !!executionLog.length || true }]);
-    } catch (error: any) {
-      setMessages(prev => [...prev, { role: "assistant", content: `Error: ${error.message}` }]);
+    } catch {
+      onMessagesChange([
+        ...updatedMessages,
+        {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: "Parece que hay un error de conexión. ¿Intentamos de nuevo?",
+        },
+      ]);
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#111827] relative overflow-hidden">
-      <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#397DC1]/10 rounded-full blur-[100px]" />
-      <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-[#D8A93F]/10 rounded-full blur-[100px]" />
-
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar" ref={scrollRef}>
-        <AnimatePresence initial={false}>
-          {messages.map((msg, idx) => (
-            <motion.div key={idx} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[85%] p-4 rounded-2xl border ${msg.role === "user" ? "bg-[#397DC1] border-white/10 text-white rounded-tr-none" : "bg-white/5 backdrop-blur-md border-white/10 text-white rounded-tl-none"}`}>
-                <p className="text-sm">{msg.content}</p>
-              </div>
-            </motion.div>
-          ))}
-          {isLoading && <div className="p-4 bg-white/5 rounded-2xl w-16 animate-pulse" />}
-        </AnimatePresence>
+    <div className="flex flex-col h-full p-4 pb-32">
+      <div className="flex items-center justify-between mb-5">
+        <h1 className="text-2xl font-bold text-[#D8A93F]">Habla con Lukas</h1>
+        {messages.length > 0 && (
+          <button
+            onClick={() => onMessagesChange([])}
+            className="text-white/30 text-xs hover:text-white/60 transition-colors"
+          >
+            Limpiar chat
+          </button>
+        )}
       </div>
 
-      <form onSubmit={handleSubmit} className="p-4 bg-white/5 backdrop-blur-xl border-t border-white/10 z-10">
-        <div className="flex gap-3 items-center max-w-4xl mx-auto">
-          <motion.button
-            type="button"
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-            onMouseDown={startRecording}
-            onMouseUp={stopRecording}
-            onMouseLeave={stopRecording}
-            className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
-              isRecording 
-                ? "bg-red-500 text-white shadow-[0_0_20px_rgba(239,68,68,0.5)]" 
-                : "bg-white/10 text-white/70 hover:bg-white/20"
-            }`}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-4 mb-4 no-scrollbar">
+        {messages.length === 0 && !isLoading && (
+          <div className="flex justify-start">
+            <div className="max-w-[85%] p-4 rounded-2xl bg-white/10 text-white rounded-tl-none border border-white/10">
+              <p className="text-sm leading-relaxed font-semibold">¡Hola! Soy Lukas 🤙</p>
+              <p className="text-sm leading-relaxed mt-2 opacity-70">
+                Dime lo que gastaste, crea metas, actualiza tu saldo o pregúntame cualquier cosa de tus finanzas.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {["Gasté 50 mil en mercado", "Crea una meta de ahorro", "¿Cuál es mi saldo?"].map((tip) => (
+                  <button
+                    key={tip}
+                    onClick={() => setInputState(tip)}
+                    className="text-[11px] bg-white/5 border border-white/10 text-white/60 px-3 py-1.5 rounded-full hover:bg-white/10 transition"
+                  >
+                    {tip}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {messages.map((m, idx) => (
+          <motion.div
+            key={m.id || idx}
+            initial={{ opacity: 0, y: 8, x: m.role === "user" ? 10 : -10 }}
+            animate={{ opacity: 1, y: 0, x: 0 }}
+            className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
           >
-            <AudioLines size={24} className={isRecording ? "animate-pulse" : ""} />
-          </motion.button>
-          
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Mensaje..."
-            className="flex-1 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white text-sm focus:outline-none focus:border-[#397DC1] transition-colors"
-          />
-          
-          <button
-            type="submit"
-            disabled={!input.trim() || isLoading}
-            className="bg-[#D8A93F] text-[#111827] font-black w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-lg hover:brightness-110 disabled:opacity-30"
+            <div
+              className={`max-w-[85%] p-4 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
+                m.role === "user"
+                  ? "bg-[#D8A93F] text-black rounded-tr-none font-medium"
+                  : "bg-white/10 text-white rounded-tl-none border border-white/10"
+              }`}
+            >
+              {m.content}
+            </div>
+          </motion.div>
+        ))}
+
+        {isLoading && (
+          <motion.div
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="flex justify-start"
           >
-            ➤
-          </button>
-        </div>
+            <div className="p-4 rounded-2xl bg-white/10 text-white rounded-tl-none border border-white/10 flex items-center gap-1.5">
+              {[0, 150, 300].map((delay) => (
+                <span
+                  key={delay}
+                  className="w-2 h-2 bg-[#D8A93F] rounded-full animate-bounce"
+                  style={{ animationDelay: `${delay}ms` }}
+                />
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </div>
+
+      <form
+        onSubmit={handleSubmit}
+        className="flex gap-2 bg-[#111827] border border-white/10 p-2 rounded-full backdrop-blur-md"
+      >
+        <input
+          value={input}
+          onChange={(e) => setInputState(e.target.value)}
+          placeholder="Dime un gasto, crea una meta..."
+          className="flex-1 bg-transparent border-none outline-none text-white px-4 text-sm"
+          disabled={isLoading}
+        />
+        <button
+          type="submit"
+          disabled={isLoading || !input.trim()}
+          className="bg-[#D8A93F] text-black w-10 h-10 rounded-full flex items-center justify-center font-bold disabled:opacity-50 transition-opacity"
+        >
+          →
+        </button>
       </form>
     </div>
   );

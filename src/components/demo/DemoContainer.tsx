@@ -9,19 +9,33 @@ import MetasView from "./MetasView";
 import HistorialView from "./HistorialView";
 import BottomNav from "./BottomNav";
 
-export default function DemoContainer() {
-  const [activeTab, setActiveTab] = useState("home"); // home, chat, analytics
-  const [viewVersion, setViewVersion] = useState(0);
-  const [analyticsTarget, setAnalyticsTarget] = useState<{ viewMode?: "groups" | "compare"; month?: string }>({});
-  const [showAlert, setShowAlert] = useState(false);
-  const [showSplash, setShowSplash] = useState(true);
+interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+}
 
-  const changeTab = (tab: string, options?: { viewMode?: "groups" | "compare"; month?: string }) => {
-    if (tab === "analytics") {
-      setAnalyticsTarget(options || {});
-    }
-    setActiveTab(tab);
-    setViewVersion((version) => version + 1);
+export default function DemoContainer() {
+  const [activeTab, setActiveTab] = useState("home");
+  const [showSplash, setShowSplash] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Chat history lives HERE so it persists when switching tabs
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+
+  const handleNavigate = (page: string, _opts?: any) => {
+    const pageMap: Record<string, string> = {
+      home: "home",
+      chat: "chat",
+      metas: "metas",
+      historial: "historial",
+      analytics: "analytics",
+    };
+    setActiveTab(pageMap[page] || page);
+  };
+
+  const handleRefreshData = () => {
+    setRefreshKey((k) => k + 1);
   };
 
   return (
@@ -31,16 +45,26 @@ export default function DemoContainer() {
       {/* Scrollable Content Area */}
       <div className="flex-1 overflow-y-auto no-scrollbar pb-24 relative z-10">
         <AnimatePresence mode="wait">
-          {activeTab === "home" && <HomeView key={`home-${viewVersion}`} onOpenAlert={() => setShowAlert(true)} />}
-          {activeTab === "chat" && <ChatView key={`chat-${viewVersion}`} onNavigate={changeTab} />}
-          {activeTab === "analytics" && <AnalyticsView key={`analytics-${viewVersion}`} initialViewMode={analyticsTarget.viewMode} initialMonth={analyticsTarget.month} />}
-          {activeTab === "metas" && <MetasView key={`metas-${viewVersion}`} />}
-          {activeTab === "historial" && <HistorialView key={`historial-${viewVersion}`} />}
+          {activeTab === "home" && (
+            <HomeView key={`home-${refreshKey}`} onOpenAlert={() => {}} />
+          )}
+          {activeTab === "chat" && (
+            <ChatView
+              key="chat"
+              messages={chatMessages}
+              onMessagesChange={setChatMessages}
+              onNavigate={handleNavigate}
+              onRefreshData={handleRefreshData}
+            />
+          )}
+          {activeTab === "analytics" && <AnalyticsView key={`analytics-${refreshKey}`} />}
+          {activeTab === "metas" && <MetasView key={`metas-${refreshKey}`} />}
+          {activeTab === "historial" && <HistorialView key={`historial-${refreshKey}`} />}
         </AnimatePresence>
       </div>
 
       {/* Bottom Navigation */}
-      <BottomNav activeTab={activeTab} onChangeTab={changeTab} />
+      <BottomNav activeTab={activeTab} onChangeTab={setActiveTab} />
     </div>
   );
 }

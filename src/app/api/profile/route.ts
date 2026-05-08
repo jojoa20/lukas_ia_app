@@ -86,3 +86,6 @@ export async function PUT(req: NextRequest) {
 
   return NextResponse.json({ data: data?.[0] || null })
 }
+
+// PATCH is an alias for PUT (used by ChatView for balance updates)
+export const PATCH = PUT
