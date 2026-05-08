@@ -1,145 +1,85 @@
 "use client";
-import React, { useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import React, { useState } from "react";
 
-interface HormigrItem {
-  grupo: string;
-  total: number;
-  cantidad: number;
-}
-
-interface HormigaData {
-  total_hormiga: number;
-  desglose: HormigrItem[];
-  mensaje_ia: string;
-}
-
-const EMOJIS: Record<string, string> = {
-  uber: "🚗", rappi: "🛵", cafe: "☕", café: "☕", tinto: "☕",
-  empanada: "🥟", helado: "🍦", snack: "🍿", pola: "🍺",
-  alimentacion: "🍔", transporte: "🚌", entretenimiento: "🎬",
-  salud: "💊", educacion: "📚", vivienda: "🏠", otros: "💸",
-};
-
-function getEmoji(grupo: string): string {
-  const lower = grupo.toLowerCase();
-  return Object.entries(EMOJIS).find(([k]) => lower.includes(k))?.[1] ?? "💸";
-}
-
-function formatCOP(val: number): string {
-  if (val >= 1000000) return `$${(val / 1000000).toFixed(1)}M`;
-  if (val >= 1000) return `$${(val / 1000).toFixed(0)}k`;
-  return `$${val}`;
-}
-
-export default function LeakBusterBubbles() {
-  const [data, setData] = useState<HormigaData | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch("/api/alerts/hormiga?days=30")
-      .then(res => res.json())
-      .then(json => {
-        if (json.data) setData(json.data);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="animate-pulse space-y-2">
-        <div className="h-4 w-1/3 bg-white/10 rounded" />
-        <div className="flex gap-3 flex-wrap">
-          {[1, 2, 3].map(i => <div key={i} className="h-20 w-20 bg-white/10 rounded-full" />)}
-        </div>
-      </div>
-    );
-  }
-
-  if (!data || !data.desglose?.length) {
-    return (
-      <div className="bg-white/5 rounded-2xl p-5 border border-white/10 text-center">
-        <p className="text-4xl mb-2">🐜</p>
-        <p className="text-white/50 text-sm">Sin gastos hormiga este mes.</p>
-        <p className="text-green-400 text-xs font-bold mt-1">¡Vas de lujo, parcero!</p>
-      </div>
-    );
-  }
-
-  const maxTotal = Math.max(...data.desglose.map(d => d.total));
-
-  // Tamaños de burbuja: del más grande (72px) al más chico (40px)
-  const getBubbleSize = (total: number) => {
-    const ratio = total / maxTotal;
-    return Math.round(40 + ratio * 40);
-  };
-
-  const alertColors = [
-    "from-red-500/80 to-red-700/80 border-red-400/50",
-    "from-orange-500/70 to-orange-700/70 border-orange-400/40",
-    "from-yellow-500/60 to-yellow-700/60 border-yellow-400/30",
-    "from-yellow-600/50 to-yellow-800/50 border-yellow-500/20",
-  ];
+export default function LeakBusterGraph() {
+  const [hoverAlert, setHoverAlert] = useState(false);
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h3 className="text-white font-bold text-sm">Leak Buster 🐜</h3>
-          <p className="text-white/40 text-[10px]">Últimos 30 días</p>
-        </div>
-        <div className="text-right">
-          <p className="text-red-400 font-black text-lg">{formatCOP(data.total_hormiga)}</p>
-          <p className="text-white/40 text-[10px]">fuga total</p>
-        </div>
+    <div className="bg-[#18264A]/80 border border-blue-800/30 rounded-[20px] p-5 flex flex-col relative shadow-lg shadow-blue-900/10 w-full mb-4 min-h-[300px]">
+      <div className="flex justify-between items-center mb-6">
+        <h3 className="text-[#93A5C9] text-sm font-medium">Lukas AI - Leak Buster / Identificador de fugas</h3>
       </div>
+      
+      {/* Node Graph Mockup */}
+      <div className="flex-1 relative w-full h-full flex items-center justify-center isolate">
+        
+        {/* Lines Layer */}
+        <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: -1 }}>
+          <g stroke="#3B82F6" strokeWidth="1.5" opacity="0.4">
+            {/* Center to Top Left */}
+            <line x1="50%" y1="50%" x2="25%" y2="25%" />
+            <line x1="50%" y1="50%" x2="45%" y2="15%" />
+            {/* Center to Top Right */}
+            <line x1="50%" y1="50%" x2="65%" y2="20%" />
+            <line x1="50%" y1="50%" x2="75%" y2="40%" stroke="#EF4444" strokeWidth="2" opacity="0.8" />
+            {/* Center to Bottom Left */}
+            <line x1="50%" y1="50%" x2="25%" y2="70%" />
+            {/* Center to Bottom Right */}
+            <line x1="50%" y1="50%" x2="60%" y2="85%" />
+          </g>
 
-      {/* Burbujas */}
-      <div className="flex flex-wrap gap-3 items-end justify-start min-h-[100px]">
-        {data.desglose.slice(0, 6).map((item, i) => {
-          const size = getBubbleSize(item.total);
-          const colorClass = alertColors[Math.min(i, alertColors.length - 1)];
-          return (
-            <motion.div
-              key={item.grupo}
-              initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ delay: i * 0.1, type: "spring", stiffness: 200 }}
-              style={{ width: size, height: size }}
-              className={`rounded-full bg-gradient-to-br ${colorClass} border flex flex-col items-center justify-center text-center shadow-lg cursor-default`}
-              title={`${item.grupo}: ${formatCOP(item.total)} · ${item.cantidad} veces`}
-            >
-              <span style={{ fontSize: size * 0.28 }}>{getEmoji(item.grupo)}</span>
-              <span className="text-white font-bold leading-tight" style={{ fontSize: Math.max(8, size * 0.14) }}>
-                {formatCOP(item.total)}
-              </span>
-            </motion.div>
-          );
-        })}
-      </div>
+          {/* Red Alert Cluster Connections */}
+          <g stroke="#EF4444" strokeWidth="2" opacity="0.6">
+             <line x1="75%" y1="40%" x2="88%" y2="25%" />
+             <line x1="75%" y1="40%" x2="98%" y2="45%" />
+             <line x1="75%" y1="40%" x2="92%" y2="65%" />
+             <line x1="75%" y1="40%" x2="68%" y2="58%" />
+          </g>
+        </svg>
 
-      {/* Leyenda: top 3 */}
-      <div className="space-y-1.5">
-        {data.desglose.slice(0, 3).map((item, i) => (
-          <div key={item.grupo} className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-xs">{getEmoji(item.grupo)}</span>
-              <span className="text-white/70 text-xs capitalize">{item.grupo}</span>
-              <span className="text-white/30 text-[10px]">×{item.cantidad}</span>
+        {/* Nodes Layer */}
+
+        {/* Central Hub Node */}
+        <div className="absolute w-6 h-6 bg-[#3B82F6] border-[3px] border-[#1E3A8A] rounded-full shadow-[0_0_20px_rgba(59,130,246,0.6)] z-10"></div>
+        
+        {/* Active Blue Nodes */}
+        <div className="absolute top-[25%] left-[25%] -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-blue-400 rounded-full shadow-[0_0_12px_rgba(96,165,250,0.5)]">
+           <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-[11px] text-blue-200/80 font-medium">Percosa</span>
+        </div>
+        <div className="absolute top-[15%] left-[45%] -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-blue-400 rounded-full shadow-[0_0_12px_rgba(96,165,250,0.5)]">
+           <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-[11px] text-blue-200/80 font-medium">Tinto</span>
+        </div>
+        <div className="absolute top-[20%] left-[65%] -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-blue-400 rounded-full shadow-[0_0_12px_rgba(96,165,250,0.5)]">
+           <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-[11px] text-blue-200/80 font-medium">Empanadas</span>
+        </div>
+        <div className="absolute top-[70%] left-[25%] -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-blue-400 rounded-full shadow-[0_0_12px_rgba(96,165,250,0.5)]">
+           <span className="absolute top-5 left-1/2 -translate-x-1/2 text-[11px] text-blue-200/80 font-medium">Pas</span>
+        </div>
+        <div className="absolute top-[85%] left-[60%] -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-blue-400 rounded-full shadow-[0_0_12px_rgba(96,165,250,0.5)]">
+           <span className="absolute top-5 left-1/2 -translate-x-1/2 text-[11px] text-blue-200/80 font-medium">Streaming</span>
+        </div>
+
+        {/* Red Alert Main Node */}
+        <div 
+          className="absolute top-[40%] left-[75%] -translate-x-1/2 -translate-y-1/2 w-6 h-6 bg-red-500 rounded-full shadow-[0_0_25px_rgba(239,68,68,0.9)] z-20 cursor-pointer transition-transform hover:scale-110"
+          onMouseEnter={() => setHoverAlert(true)}
+          onMouseLeave={() => setHoverAlert(false)}
+        >
+          {hoverAlert && (
+            <div className="absolute bottom-full mb-3 right-1/2 translate-x-1/2 md:translate-x-0 w-[180px] bg-[#222222] text-white text-xs p-3 rounded-lg shadow-2xl border border-red-500/40 z-50">
+              <div className="text-red-400 font-bold mb-1 uppercase text-[10px] tracking-wider">Cluster Alerta:</div>
+              <div className="font-medium">Gastos Hormiga detected ($150k)</div>
             </div>
-            <span className={`text-xs font-bold ${i === 0 ? 'text-red-400' : 'text-orange-400'}`}>
-              {formatCOP(item.total)}
-            </span>
-          </div>
-        ))}
-      </div>
+          )}
+        </div>
+        
+        {/* Red Cluster Sub-nodes */}
+        <div className="absolute top-[25%] left-[88%] -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-[#F87171] rounded-full shadow-[0_0_15px_rgba(248,113,113,0.6)]"></div>
+        <div className="absolute top-[45%] left-[98%] -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-[#F87171] rounded-full shadow-[0_0_15px_rgba(248,113,113,0.6)]"></div>
+        <div className="absolute top-[65%] left-[92%] -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-[#F87171] rounded-full shadow-[0_0_15px_rgba(248,113,113,0.6)]"></div>
+        <div className="absolute top-[58%] left-[68%] -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-[#F87171] rounded-full shadow-[0_0_15px_rgba(248,113,113,0.6)]"></div>
 
-      {/* Mensaje IA */}
-      <p className="text-white/40 text-[11px] italic border-t border-white/5 pt-3">
-        {data.mensaje_ia}
-      </p>
+      </div>
     </div>
   );
 }
