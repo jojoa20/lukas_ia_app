@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { motion } from "framer-motion";
 
 interface ChatMessage {
@@ -9,7 +9,32 @@ interface ChatMessage {
   content: string;
 }
 
-export default function ChatView() {
+// Strips <action>...</action> tags from visible text
+function cleanContent(text: string): string {
+  return text.replace(/<action>[\s\S]*?<\/action>/g, "").trim();
+}
+
+// Extracts all action objects from the response
+function parseActions(text: string): any[] {
+  const actions: any[] = [];
+  const regex = /<action>([\s\S]*?)<\/action>/g;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    try {
+      actions.push(JSON.parse(match[1]));
+    } catch {
+      // ignore malformed JSON
+    }
+  }
+  return actions;
+}
+
+interface ChatViewProps {
+  onNavigate?: (page: string, opts?: any) => void;
+  onRefreshData?: () => void;
+}
+
+export default function ChatView({ onNavigate, onRefreshData }: ChatViewProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -20,6 +45,89 @@ export default function ChatView() {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, isLoading]);
+
+  const executeActions = useCallback(
+    async (actions: any[]) => {
+      for (const action of actions) {
+        if (action.type === "NAVIGATE" && onNavigate) {
+          onNavigate(action.page, action);
+        }
+
+        if (action.type === "ADD_TRANSACTION" || action.type === "ADD_GASTO_HORMIGA") {
+          try {
+            await fetch("/api/transactions", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                monto: action.monto,
+                tipo: action.tipo || "gasto",
+                categoria: action.categoria || "otro",
+                subcategoria: action.subcategoria || action.descripcion || "",
+                descripcion: action.descripcion || "",
+                es_gasto_hormiga: action.type === "ADD_GASTO_HORMIGA" || action.es_gasto_hormiga || false,
+                metodo_entrada: "ai",
+              }),
+            });
+            onRefreshData?.();
+          } catch (e) {
+            console.error("Error saving transaction:", e);
+          }
+        }
+
+        if (action.type === "CREATE_GOAL") {
+          try {
+            await fetch("/api/metas", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                nombre: action.nombre,
+                monto_objetivo: action.monto,
+                fecha_objetivo: action.fecha_objetivo || undefined,
+                prioridad: action.prioridad || 2,
+                tipo: "ahorro",
+              }),
+            });
+            onRefreshData?.();
+          } catch (e) {
+            console.error("Error creating goal:", e);
+          }
+        }
+
+        if (action.type === "SET_CURRENT_BALANCE") {
+          try {
+            await fetch("/api/profile", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ balance_actual: action.saldo }),
+            });
+            onRefreshData?.();
+          } catch (e) {
+            console.error("Error updating balance:", e);
+          }
+        }
+
+        if (action.type === "CREATE_BUDGET") {
+          try {
+            const now = new Date();
+            await fetch("/api/budgets", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                categoria: action.categoria,
+                limite_cop: action.limite_cop,
+                mes: now.getMonth() + 1,
+                anio: now.getFullYear(),
+              }),
+            });
+            onRefreshData?.();
+          } catch (e) {
+            console.error("Error creating budget:", e);
+          }
+        }
+      }
+    },
+    [onNavigate, onRefreshData]
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,16 +158,26 @@ export default function ChatView() {
       });
 
       const json = await res.json();
-      const reply = json?.data?.content || json?.error || "Lukas no pudo responder. Intenta de nuevo.";
+      const rawContent: string =
+        json?.data?.content || json?.error || "Lukas no pudo responder. Intenta de nuevo.";
+
+      // Parse and execute actions before showing message
+      const actions = parseActions(rawContent);
+      const visibleContent = cleanContent(rawContent);
 
       setMessages((prev) => [
         ...prev,
         {
           id: (Date.now() + 1).toString(),
           role: "assistant",
-          content: reply,
+          content: visibleContent,
         },
       ]);
+
+      // Execute DB actions after showing the message
+      if (actions.length > 0) {
+        await executeActions(actions);
+      }
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -81,9 +199,12 @@ export default function ChatView() {
       <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-4 mb-4 no-scrollbar">
         {messages.length === 0 && !isLoading && (
           <div className="flex justify-start">
-            <div className="max-w-[80%] p-4 rounded-2xl bg-white/10 text-white rounded-tl-none border border-white/10">
+            <div className="max-w-[85%] p-4 rounded-2xl bg-white/10 text-white rounded-tl-none border border-white/10">
               <p className="text-sm leading-relaxed">
-                ¡Hola! Soy Lukas, tu pana financiero. 🤙 ¿En qué te puedo ayudar hoy?
+                ¡Hola! Soy Lukas, tu pana financiero. 🤙
+              </p>
+              <p className="text-sm leading-relaxed mt-2 opacity-70">
+                Puedo ayudarte a registrar gastos, crear metas de ahorro, ver tu saldo y más. ¿En qué te ayudo hoy?
               </p>
             </div>
           </div>
@@ -92,12 +213,12 @@ export default function ChatView() {
         {messages.map((m, idx) => (
           <motion.div
             key={m.id || idx}
-            initial={{ opacity: 0, x: m.role === "user" ? 20 : -20 }}
-            animate={{ opacity: 1, x: 0 }}
+            initial={{ opacity: 0, y: 8, x: m.role === "user" ? 10 : -10 }}
+            animate={{ opacity: 1, y: 0, x: 0 }}
             className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
           >
             <div
-              className={`max-w-[80%] p-4 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
+              className={`max-w-[85%] p-4 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
                 m.role === "user"
                   ? "bg-[#D8A93F] text-black rounded-tr-none font-medium"
                   : "bg-white/10 text-white rounded-tl-none border border-white/10"
@@ -110,12 +231,14 @@ export default function ChatView() {
 
         {isLoading && (
           <motion.div
-            initial={{ opacity: 0, x: -20 }}
+            initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
             className="flex justify-start"
           >
-            <div className="max-w-[80%] p-4 rounded-2xl bg-white/10 text-white rounded-tl-none border border-white/10">
-              <p className="text-sm leading-relaxed animate-pulse">Lukas está pensando...</p>
+            <div className="p-4 rounded-2xl bg-white/10 text-white rounded-tl-none border border-white/10 flex items-center gap-2">
+              <span className="w-2 h-2 bg-[#D8A93F] rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+              <span className="w-2 h-2 bg-[#D8A93F] rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+              <span className="w-2 h-2 bg-[#D8A93F] rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
             </div>
           </motion.div>
         )}
@@ -128,7 +251,7 @@ export default function ChatView() {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Dime un gasto o pregunta algo..."
+          placeholder="Dime un gasto, crea una meta..."
           className="flex-1 bg-transparent border-none outline-none text-white px-4 text-sm"
           disabled={isLoading}
         />

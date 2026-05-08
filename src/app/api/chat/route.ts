@@ -70,15 +70,25 @@ function menuHelpResponse(text: string) {
 }
 
 function parseAmount(text: string) {
-  const normalized = text.toLowerCase().replace(/\./g, '').replace(/,/g, '')
-  const match = normalized.match(/(\d+(?:\.\d+)?)\s*(millones|millon|palos|m|mil|k)?/)
+  const normalized = text.toLowerCase()
+    .replace(/\$/g, '')
+    .replace(/\./g, '')   // remove thousand separators like 30.000
+    .replace(/,/g, '.')   // convert decimal comma to dot
+
+  // Match pattern: number + optional unit word
+  const match = normalized.match(/(\d+(?:\.\d+)?)\s*(millones?|palos?|m(?=\b)|miles?|mil(?=\b)|k(?=\b))?/)
   if (!match) return null
 
   const value = Number(match[1])
   const unit = match[2]
   if (Number.isNaN(value)) return null
-  if (unit === 'millones' || unit === 'millon' || unit === 'palos' || unit === 'm') return value * 1000000
-  if (unit === 'mil' || unit === 'k') return value * 1000
+
+  if (unit === 'millones' || unit === 'millon' || unit === 'palos' || unit === 'palo' || unit === 'm') {
+    return value * 1_000_000
+  }
+  if (unit === 'miles' || unit === 'mil' || unit === 'k') {
+    return value * 1_000
+  }
   return value
 }
 

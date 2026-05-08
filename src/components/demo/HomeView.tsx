@@ -107,17 +107,32 @@ export default function HomeView({ onOpenAlert }: { onOpenAlert?: () => void }) 
       <div className="grid grid-cols-2 gap-4 mb-6">
         <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
           <div className="text-[13px] font-bold text-white mb-3">Presupuesto</div>
-          <div className="h-1.5 w-full bg-[#111827] rounded-full overflow-hidden mb-2">
-            <div className="h-full bg-[#D8A93F] w-[75%]" />
-          </div>
-          <div className="text-[10px] text-white/50 text-right">75% usado</div>
+          {loading ? (
+            <div className="h-4 bg-white/10 rounded animate-pulse" />
+          ) : (
+            <>
+              <div className="h-1.5 w-full bg-[#111827] rounded-full overflow-hidden mb-2">
+                <div
+                  className="h-full bg-[#D8A93F] rounded-full transition-all"
+                  style={{ width: `${Math.min(100, Math.round(((profile as any)?.gastado_cop || 0) / Math.max((profile as any)?.limite_cop || 1, 1) * 100))}%` }}
+                />
+              </div>
+              <div className="text-[10px] text-white/50 text-right">
+                {profile ? "Ver detalles →" : "Sin presupuesto"}
+              </div>
+            </>
+          )}
         </div>
         <div className="bg-white/5 p-4 rounded-2xl border border-white/10" onClick={() => setShowModal(true)}>
           <div className="text-[13px] font-bold text-white mb-3">Alertas</div>
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-red-500 rounded-full animate-ping" />
-            <span className="text-xs text-red-400 font-bold">Gasto Hormiga</span>
-          </div>
+          {loading ? (
+            <div className="h-4 bg-white/10 rounded animate-pulse" />
+          ) : (
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-[#D8A93F] rounded-full animate-ping" />
+              <span className="text-xs text-[#D8A93F] font-bold">Toca para ver</span>
+            </div>
+          )}
         </div>
       </div>
 
