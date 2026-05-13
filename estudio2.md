@@ -1,7 +1,8 @@
 # Estudio 2 — Lukas AI: Cómo funciona todo por dentro
 
 > Documento técnico completo para entender el proyecto desde cero.
-> Rama activa: `djojo-mvp-final` / `main` — Mayo 2026
+> Rama activa: `main` — Mayo 2026
+> Última actualización: 13 Mayo 2026 — Deploy Vercel + fixes de scraping
 
 ---
 
@@ -28,7 +29,8 @@ La app vive en el navegador con interfaz estilo móvil. No es una app nativa —
 | Estilos | Tailwind CSS v4 |
 | Lenguaje | TypeScript |
 | Scraper de precios semanal | Python + Playwright |
-| Scraper en tiempo real | VTEX API de Éxito.com |
+| Scraper en tiempo real | VTEX API de Éxito.com (via lib compartida) |
+| Deploy | Vercel (producción) |
 
 ---
 
@@ -68,26 +70,28 @@ Clerk auth → obtener user_id → buscar perfil en Supabase
 ```
 
 **Paso 2 — Cargar contexto financiero completo**
-El agente no habla "a ciegas". Antes de responder, carga:
+El agente no habla "a ciegas". Antes de responder, carga en paralelo con `Promise.all`:
 - Perfil del usuario (saldo, FinScore, racha)
 - Últimas 20 transacciones
 - Metas de ahorro activas
 - Presupuestos del mes actual
 - Nombres de sus grupos financieros
-- Tendencias activas (productos virales en X Colombia)
+
+Después, por separado con manejo de errores propio:
+- Tendencias activas (`consumer_trends`) — si la tabla no existe o hay error, continúa sin trends
 
 Todo esto va como contexto al prompt de Gemini.
 
 **Paso 3 — Detectar si menciona un gasto**
-Si el mensaje contiene palabras como "compré", "gasté", "pagué", "me costó":
+Si el mensaje contiene palabras como "compré", "gasté", "pagué":
 - Se extrae el nombre del producto (ej: "un panal de huevos" → "huevos")
-- Se consulta la API de Éxito en tiempo real para obtener el precio actual
-- Si el precio pagado difiere >15% del precio de Éxito → activa el comparador
+- Se llama directamente a `fetchExitoPrice()` de `src/lib/prices.ts` (sin HTTP roundtrip)
+- Si el precio pagado difiere >15% del precio de Éxito y el ratio es razonable → activa el comparador
 
 **Paso 4 — Decidir quién responde**
 
 ```
-¿Hay diferencia significativa de precio con Éxito?
+¿Hay diferencia significativa de precio con Éxito? (diff >15% y ratio 0.1x–20x)
    └── SÍ → Respuesta directa (sin Gemini): "te dejaste tumbar" o "buena compra"
    └── NO → Continúa...
 
@@ -172,8 +176,6 @@ SEMANTIC_CLUSTERS = {
   'Suscripciones/Apps':     ['netflix', 'spotify', 'prime', 'disney', 'youtube', ...],
   'Licor/Fiesta':           ['cerveza', 'aguardiente', 'ron', 'vino', 'trago', 'bar', ...],
   'Máquinas/Antojos':       ['maquina', 'antojo', 'impulso', 'capricho', ...],
-  'Cigarrillos/Vape':       ['cigarrillo', 'vape', 'tabaco', ...],
-  'Apuestas/Juegos':        ['apuesta', 'chance', 'loteria', 'casino', 'bet'],
 }
 ```
 
@@ -217,31 +219,6 @@ Cuando se registra un gasto, se normaliza el texto (quita tildes, pasa a minúsc
    → impacto = -(total_hormiga / 5000) puntos
 ```
 
-**Respuesta del endpoint:**
-```json
-{
-  "data": {
-    "periodo_dias": 30,
-    "total_hormiga": 87000,
-    "cantidad_clusters": 2,
-    "impacto_finscore": -17,
-    "desglose": [
-      {
-        "grupo": "Café/Bebidas calientes",
-        "icon": "☕️",
-        "cantidad": 5,
-        "total": 45000,
-        "promedio": 9000,
-        "frecuencia_dias": 4,
-        "severity": "media",
-        "descripciones_sample": ["Tinto", "Café", "Capuchino"]
-      }
-    ],
-    "mensaje_ia": "Cuidado pana, llevas $87k en gastos hormiga..."
-  }
-}
-```
-
 ---
 
 ### 5.4 Detección en tiempo real (al chatear)
@@ -261,69 +238,110 @@ Aparte del endpoint de análisis, el chat detecta hormigas en el momento que el 
 
 ## 6. Comparador de Precios Éxito.com
 
-### 6.1 Dos métodos de scraping: cuál se usa cuándo
+### 6.1 Arquitectura del comparador
 
-La app usa **dos estrategias diferentes** dependiendo del contexto:
+El comparador de precios tiene tres capas:
 
-| Método | Cuándo | Archivo |
-|--------|--------|---------|
-| **VTEX API** (tiempo real) | Cuando el usuario menciona un gasto en el chat | `src/app/api/prices/exito/route.ts` |
-| **Playwright** (scraper HTML) | Pipeline semanal automatizado, datos históricos | `scripts/scraper_market.py` |
+```
+src/lib/prices.ts          ← Lógica compartida (lib central)
+       ↑                          ↑
+/api/prices/exito/route.ts   /api/chat/route.ts
+  (endpoint público)          (llamada directa, sin HTTP)
+```
+
+**Antes (problema):** El chat llamaba a `/api/prices/exito` vía HTTP — una petición de red circular que agregaba 2–4 segundos de latencia y podía fallar por timeout.
+
+**Ahora:** El chat importa `fetchExitoPrice()` directamente de `src/lib/prices.ts`. El endpoint `/api/prices/exito` también usa la misma función. Una sola fuente de verdad, cero roundtrips innecesarios.
 
 ---
 
-### 6.2 La VTEX API — comparador en tiempo real
+### 6.2 La librería `src/lib/prices.ts`
 
-**¿Qué es VTEX?** Es la plataforma de e-commerce que usa Éxito. Tienen una API interna que retorna los productos en JSON.
+Este archivo contiene toda la lógica de consulta y filtrado de precios. Es la única pieza que toca la VTEX API.
 
-**URL correcta (importante):**
+**URL VTEX correcta:**
 ```
-https://www.exito.com/io/api/catalog_system/pub/products/search/{producto}?_from=0&_to=9
+https://www.exito.com/io/api/catalog_system/pub/products/search/{producto}?_from=0&_to=14
+```
+> ⚠️ La URL sin `/io/` devuelve un redirect 308 y no funciona.
+
+**Flujo interno de `fetchExitoPrice(query)`:**
+
+```
+1. Llama a VTEX API con headers de browser (User-Agent, Referer, Origin)
+   → Recibe hasta 15 productos en JSON
+
+2. Filtro de relevancia:
+   → Extrae las palabras clave del query (>2 caracteres, sin tildes)
+   → Solo conserva productos cuyo nombre contenga al menos una de esas palabras
+   → Ej: query="leche" → "Leche Alpina" ✓ | "Refrigerador LG" ✗
+
+3. Cap de precio:
+   → Descarta productos < $500 COP (tests/errores) 
+   → Descarta productos > $300.000 COP (filtra electrodomésticos y appliances)
+
+4. Remoción de outliers (IQR method):
+   → Calcula Q1, Q3 e IQR del conjunto de precios
+   → Elimina precios fuera del rango [Q1 - 1.5*IQR, Q3 + 1.5*IQR]
+   
+5. Filtro de heterogeneidad (detección de contaminación de categoría):
+   → Si max/min > 8 (precios demasiado dispersos = mezcla de categorías)
+   → Conserva solo los precios por debajo de la mediana
+   → Heurística: el producto de supermercado es casi siempre el más barato
+
+6. Retorna: avg_price, min_price, max_price, count, products[]
 ```
 
-> ⚠️ La URL sin `/io/` devuelve un redirect 308 y no funciona. Este fue uno de los bugs que se corrigió.
-
-**Cómo funciona el flujo completo:**
-
+**Ejemplo real — query "leche":**
 ```
-Usuario: "compré un panal de huevos en 30 mil"
-                ↓
-chat/route.ts detecta palabras: "compré", "huevos", "30 mil"
-                ↓
-isSpendingMention = true
-detectedAmount   = 30000
-productQuery     = "huevos" (quitando artículos: "un panal de" → "huevos")
-                ↓
-Llamada a: GET /api/prices/exito?q=huevos
-                ↓
-VTEX API retorna productos con precios reales
-                ↓
-priceResult = { avg_price: 20000, min_price: 9400, max_price: 26900 }
-                ↓
-Cálculo:
-  diff     = 30000 - 20000 = 10000
-  diffPct  = 10000 / 20000 = 50%
-  umbral   = 20000 * 0.15  = 3000
-  10000 > 3000 → CARO
-                ↓
-Respuesta directa (sin pasar por Gemini):
-"¡Uy pana, te dejaste tumbar! 😬 Pagaste $30.000 por 'Huevos'
-y en Éxito está a $20.000. Pagaste 50% más caro, eso son $10.000
-de más. Si compras esto seguido, comprando en Éxito ahorrarías
-hasta $40.000 al mes..."
-<action>{"type":"ADD_TRANSACTION","monto":30000,...}</action>
+VTEX retorna: Leche Alpina 1L ($5.490), Leche Granjera 6.6L ($38.700),
+              Extractor Leche Materna ($85.049), Extractor Doble ($119.900)
+
+Relevancia: todos contienen "leche" ✓
+Cap: todos < $300k ✓
+IQR: Q1=5490, Q3=38700 → upper bound = 38700 + 1.5*(33210) = 88.515
+→ $85.049 y $119.900 tienen problema
+Heterogeneidad: max/min = 119900/5490 = 21.8 > 8
+→ Solo conservar por debajo de la mediana (~27.095)
+→ Resultado: [$5.490, $38.700] → avg = ~$22.000 (leche real)
 ```
+
+---
+
+### 6.3 El comparador en el chat
+
+**Condiciones para activar la comparación:**
+1. El mensaje contiene "gasté/pagué/compré/gaste/pague/compre"
+2. Se detecta un monto (`parseAmount`)
+3. Se extrae un nombre de producto de más de 3 caracteres
+4. `fetchExitoPrice` retorna `success: true` con `avg_price`
+5. La diferencia es >15% del precio de referencia
+6. **Guard de ratio**: el precio pagado está entre 10% y 2000% del precio de Éxito (evita comparaciones absurdas cuando la búsqueda devuelve categorías equivocadas)
 
 **Los tres veredictos:**
 - **CARO** (diff > +15%): "¡Uy pana, te dejaste tumbar! 😬"
 - **BARATO** (diff < -15%): "¡Buena compra, pana! 🎯"
 - **PRECIO JUSTO** (diff ≤ ±15%): Solo registra el gasto sin comentar
 
-En todos los casos siempre se registra la transacción.
+En todos los casos siempre se registra la transacción automáticamente.
+
+**Tips adicionales que se agregan automáticamente:**
+- Si hay una meta activa: "Con la diferencia ahorrada en X semanas llegarías a tu meta 'Y'"
+- Si hay presupuesto al límite: "⚠️ Con esto llevas el 90% de tu presupuesto de Salidas este mes"
+- Proyección mensual: "comprando en Éxito ahorrarías hasta $X al mes"
 
 ---
 
-### 6.3 El scraper Playwright — pipeline semanal
+### 6.4 Dos métodos de scraping: cuál se usa cuándo
+
+| Método | Cuándo | Archivo |
+|--------|--------|---------|
+| **VTEX API** (tiempo real) | Cuando el usuario menciona un gasto en el chat | `src/lib/prices.ts` |
+| **Playwright** (scraper HTML) | Pipeline semanal automatizado, datos históricos | `scripts/scraper_market.py` |
+
+---
+
+### 6.5 El scraper Playwright — pipeline semanal
 
 **Archivo:** `scripts/scraper_market.py`
 
@@ -343,18 +361,16 @@ Este es un scraper que corre **cada domingo a las 2 AM UTC** automáticamente v�
 7. Guarda en Supabase: tabla external_data.market_prices
 ```
 
-**Diferencia clave entre los dos métodos:**
-
-| | VTEX API (tiempo real) | Playwright (semanal) |
-|-|----------------------|---------------------|
-| Velocidad | ~1 segundo | ~30-60 segundos |
-| Datos | JSON estructurado, confiable | HTML scraping, puede fallar |
-| Uso | Chat en vivo | Historial / base de datos |
-| Frecuencia | Cada vez que el usuario menciona un gasto | Una vez por semana |
+Los datos scraped quedan en:
+```sql
+Schema: external_data
+Tabla:  market_prices
+Campos: id, created_at, product_name, price, store_name, unit, category, region
+```
 
 ---
 
-### 6.4 GitHub Actions — automatización del scraper
+### 6.6 GitHub Actions — automatización del scraper
 
 **Archivo:** `.github/workflows/prices_pipeline.yml`
 
@@ -363,19 +379,10 @@ Trigger: Cada domingo a las 2:00 AM UTC (cron: "0 2 * * 0")
 
 Pasos:
 1. Checkout del repo
-2. Instalar Python + dependencias (playwright, supabase-py)
-3. Instalar chromium para Playwright
-4. Ejecutar: python scripts/scraper_market.py
-5. El script toma las variables de entorno de los Secrets de GitHub:
+2. Build de imagen Docker con Playwright
+3. Correr el contenedor con las secrets de GitHub:
    - SUPABASE_URL
    - SUPABASE_SERVICE_ROLE_KEY
-```
-
-Los datos scraped quedan en:
-```sql
-Schema: external_data
-Tabla:  market_prices
-Campos: id, created_at, product_name, price, store_name, unit, category, region
 ```
 
 ---
@@ -486,12 +493,6 @@ El card "Desglose de Gastos" de la pantalla Home muestra las categorías de gast
 └─────────────────────────────────────┘
 ```
 
-La barra tiene 4 segmentos de colores:
-- Azul → Fijos
-- Verde → Salidas
-- Morado → Suscripciones
-- Rojo-naranja → Hormigas
-
 ---
 
 ## 10. Alertas de Hype (Compra Impulsiva)
@@ -501,7 +502,7 @@ Si el usuario menciona un producto que está viral en Colombia (X/Twitter), Luka
 ```
 Usuario: "compré el último Stanley Cup en 200 mil"
               ↓
-El sistema detecta "Stanley Cup" en la tabla trends
+El sistema detecta "Stanley Cup" en la tabla consumer_trends
 con hype_score = 95/100
               ↓
 Lukas: "¡Ojo ahí, pana! Noto que 'Stanley Cup' está súper de moda
@@ -512,7 +513,27 @@ Si dice "si"  → registra el gasto normalmente
 Si dice "no"  → "Melo, pana. Mejor ahorramos esa plata."
 ```
 
-Los trends se cargan desde Supabase (tabla `consumer_trends`) con productos que tienen `hype_score >= 80`.
+### Cómo se pobla `consumer_trends`
+
+Los trends vienen del scraper de `GET /api/trends/fetch`, que:
+
+1. Hace fetch a `https://trends24.in/colombia/` (tendencias en tiempo real de X Colombia)
+2. Parsea la meta description con cheerio para extraer los trending topics
+3. Asigna hype_score basado en posición (1ro → 100, 2do → 95, etc.)
+4. Limpia trends de más de 24 horas
+5. Inserta los nuevos en `consumer_trends`
+
+Este endpoint se ejecuta **automáticamente cada día a las 10 AM** vía Vercel Cron (configurado en `vercel.json`):
+
+```json
+{
+  "crons": [
+    { "path": "/api/trends/fetch", "schedule": "0 10 * * *" }
+  ]
+}
+```
+
+**Manejo robusto:** Si la tabla no existe o hay un error de DB, el chat continúa funcionando normalmente — simplemente no hay alertas de hype. No crashea.
 
 ---
 
@@ -530,12 +551,11 @@ Cuando el agente registra un gasto, revisa automáticamente tres condiciones y a
 "💡 12 gastos así equivalen a tu meta 'Viaje a Cartagena'."
 ```
 
-**Tip de saldo bajo** (si el saldo queda < $100k después del gasto):
-→ El agente avisa en el sistema prompt que debe mencionar el saldo escaso.
-
 ---
 
 ## 12. La Base de Datos (Supabase)
+
+**Proyecto:** `cvrrygffwmxmemlsdnax.supabase.co`
 
 Tablas principales:
 
@@ -546,8 +566,22 @@ Tablas principales:
 | `metas` | Metas de ahorro (nombre, monto_objetivo, monto_actual, fecha_objetivo, prioridad) |
 | `presupuestos` | Presupuestos por categoría (limite_cop, gastado_cop, mes, anio) |
 | `groups` | Grupos financieros compartidos |
-| `consumer_trends` | Productos virales (hype_score, platform, item_name) |
-| `external_data.market_prices` | Precios scraped de Éxito (schema separado) |
+| `group_members` | Relación usuario ↔ grupo |
+| `consumer_trends` | Productos virales (hype_score, platform, item_name) — poblada por cron diario |
+| `external_data.market_prices` | Precios scraped de Éxito (schema separado, pipeline semanal) |
+
+**SQL para crear `consumer_trends`** (en `create_consumer_trends.sql`):
+```sql
+CREATE TABLE public.consumer_trends (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  item_name text NOT NULL,
+  platform text NOT NULL,
+  hype_score integer NOT NULL CHECK (hype_score >= 0 AND hype_score <= 100),
+  created_at timestamptz DEFAULT now() NOT NULL
+);
+ALTER TABLE public.consumer_trends ENABLE ROW LEVEL SECURITY;
+-- Políticas: SELECT para authenticated, INSERT para service_role
+```
 
 **Seguridad:**
 - Cada usuario solo ve sus propios datos (Row Level Security en Supabase)
@@ -557,7 +591,64 @@ Tablas principales:
 
 ---
 
-## 13. Cómo correr el proyecto localmente
+## 13. Deploy en Vercel
+
+### URL de producción
+```
+https://lukas-ia-app1.vercel.app
+```
+
+### Cómo se despliega
+
+```bash
+# El Vercel CLI ya está instalado y autenticado como jojoa20
+# El proyecto está vinculado via .vercel/project.json
+
+vercel deploy --token "$VERCEL_TOKEN" --prod --yes
+```
+
+La vinculación del proyecto está en `.vercel/project.json`:
+```json
+{
+  "orgId": "team_4QeoWww2Zm7pPyqr6678Fi3b",
+  "projectId": "prj_V1inJOITz8dwrR1UqklnHZxpDkNQ"
+}
+```
+
+### Variables de entorno en Vercel
+
+Todas configuradas vía Vercel API para `production`, `preview` y `development`:
+
+| Variable | Tipo | Para qué |
+|----------|------|----------|
+| `NEXT_PUBLIC_SUPABASE_URL` | plain | URL del proyecto Supabase |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | plain | Clave pública Supabase |
+| `SUPABASE_SERVICE_ROLE_KEY` | encrypted | Clave admin Supabase (server only) |
+| `GEMINI_API_KEY` | encrypted | Google AI API key |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | plain | Clerk auth pública |
+| `CLERK_SECRET_KEY` | encrypted | Clerk auth secreta |
+| `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | plain | `/sign-in` |
+| `NEXT_PUBLIC_CLERK_SIGN_UP_URL` | plain | `/sign-up` |
+| `NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL` | plain | `/app` |
+| `NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL` | plain | `/app` |
+| `ELEVENLABS_API_KEY` | encrypted | ElevenLabs TTS (opcional) |
+| `ELEVENLABS_VOICE_ID` | plain | ID de voz ElevenLabs |
+
+### Crons en Vercel
+
+Configurados en `vercel.json`:
+```json
+{
+  "crons": [
+    { "path": "/api/trends/fetch", "schedule": "0 10 * * *" }
+  ]
+}
+```
+Ejecuta el scraper de trends de Colombia todos los días a las 10 AM UTC.
+
+---
+
+## 14. Cómo correr el proyecto localmente
 
 ```bash
 # 1. Clonar
@@ -582,56 +673,56 @@ pkill -f "next dev" && rm -f .next/dev/lock
 
 ---
 
-## 14. Flujo completo de ejemplo — "compré huevos en 30 mil"
+## 15. Flujo completo de ejemplo — "gasté 50 mil en pollo"
 
 ```
-1. Usuario escribe en ChatView: "compré un panal de huevos en 30 mil"
+1. Usuario escribe en ChatView: "gasté 50 mil en pollo"
 
 2. ChatView.tsx hace:
    POST /api/chat
-   body: { messages: [...historial, { role: "user", content: "compré un panal de huevos en 30 mil" }] }
+   body: { messages: [...historial, { role: "user", content: "gasté 50 mil en pollo" }] }
 
 3. chat/route.ts recibe el mensaje y:
    a. Identifica al usuario con Clerk
-   b. Carga perfil, transacciones, metas, presupuestos de Supabase
-   c. Detecta "compré" → isSpendingMention = true
-   d. Extrae monto: "30 mil" → 30000
-   e. Extrae producto: "un panal de huevos" → strip artículos → "huevos"
-   f. Llama a GET /api/prices/exito?q=huevos
+   b. Carga perfil, transacciones, metas, presupuestos de Supabase (Promise.all)
+   c. Carga consumer_trends por separado (try/catch — no bloquea si falla)
+   d. Detecta "gasté" → isSpendingMention = true
+   e. Extrae monto: "50 mil" → 50000
+   f. Extrae producto: "en pollo" → "pollo"
+   g. Llama DIRECTAMENTE a fetchExitoPrice("pollo") desde src/lib/prices.ts
 
-4. /api/prices/exito hace:
-   GET https://www.exito.com/io/api/catalog_system/pub/products/search/huevos?_from=0&_to=9
-   → Recibe 5 productos con precios reales
-   → avg_price = 20000, min_price = 9400, max_price = 26900
+4. prices.ts hace:
+   GET https://www.exito.com/io/api/catalog_system/pub/products/search/pollo?_from=0&_to=14
+   → Recibe 15 productos
+   → Filtro relevancia: conserva los que contienen "pollo" en el nombre
+   → Cap: descarta > $300k
+   → IQR: elimina outliers
+   → avg_price ≈ 12.000, min_price = 4.550, max_price = 28.400
 
 5. chat/route.ts calcula:
-   diff    = 30000 - 20000 = 10000
-   diffPct = 50%
-   50% > 15% → CARO
+   diff    = 50000 - 12000 = 38000
+   diffPct = 38000/12000  = 317%
+   ratio   = 50000/12000  = 4.2 (dentro de 0.1x–20x ✓)
+   317% > 15% → CARO → activar veredicto
 
 6. Genera respuesta directa (sin Gemini):
-   "¡Uy pana, te dejaste tumbar! 😬 Pagaste $30.000 por 'Huevos'
-   y en Éxito está a $20.000. Pagaste 50% más caro, eso son $10.000
-   de más. Si compras esto seguido, comprando en Éxito ahorrarías
-   hasta $40.000 al mes. La próxima compara primero.
-   De todas formas te registro el gasto.
-   <action>{"type":"ADD_TRANSACTION","monto":30000,"tipo":"gasto",
-   "descripcion":"Huevos","categoria":"Fijos","subcategoria":"Huevos",
-   "es_gasto_hormiga":false}</action>"
+   "¡Uy pana, te dejaste tumbar! 😬 Pagaste $50.000 por 'Pollo' 
+   y en Éxito está a $12.000 (desde $4.550). Pagaste 317% más caro...
+   <action>{"type":"ADD_TRANSACTION","monto":50000,...}</action>"
 
 7. ChatView.tsx recibe la respuesta:
    a. cleanContent() → quita el <action> tag, muestra solo el texto
    b. parseActions() → extrae el JSON del action
    c. executeActions() → POST /api/transactions con los datos del gasto
-   d. onRefreshData() → actualiza saldo y datos en la vista actual
+   d. onRefreshData() → actualiza saldo en la vista actual
    e. El usuario se queda en la pestaña de Chat (no hay NAVIGATE)
-
-8. El usuario ve el mensaje de Lukas con el regaño y sabe que quedó guardado.
 ```
 
 ---
 
-## 15. Resumen de todos los bugs corregidos en este sprint
+## 16. Resumen de todos los bugs corregidos
+
+### Sprint inicial (MVP)
 
 | Bug | Síntoma | Causa | Fix |
 |-----|---------|-------|-----|
@@ -646,3 +737,66 @@ pkill -f "next dev" && rm -f .next/dev/lock
 | HomeView sin desglose | "No tienes presupuestos activos" con datos | Solo mostraba datos si había presupuesto | Fetchar transacciones y calcular categorías directamente |
 | Tailwind no compilaba en Turbopack | `Can't resolve 'tailwindcss'` | Turbopack busca en directorio padre | `resolveAlias` en next.config.mjs |
 | CREATE_GROUP no ejecutaba | Grupos nunca se creaban desde el chat | ChatView no tenía handler para ese action type | Agregar handlers en executeActions() |
+
+### Sprint de deploy y scraping (13 Mayo 2026)
+
+| Bug | Síntoma | Causa | Fix |
+|-----|---------|-------|-----|
+| Chat lento (~4s por mensaje) | Cada mensaje con gasto tardaba 4+ segundos | Chat se llamaba a sí mismo vía HTTP para precios Y trends (dos roundtrips) | Extraer lógica a `src/lib/prices.ts` y llamar directo; trends separado en try/catch |
+| Chat crasheaba si `consumer_trends` no existía | 500 en todo el endpoint de chat | La query a tabla inexistente dentro del `Promise.all` hacía fallar todo el bloque | Sacar la query de trends del `Promise.all` y envolverla en `try/catch` propio |
+| Comparador devolvía precios incorrectos | "huevos" → hervidores de huevos; avg $140k para huevos | VTEX busca en todas las categorías sin filtro de relevancia | Filtro de relevancia por palabras del query en nombre del producto |
+| `avg_price` contaminado por outliers | Precio promedio incluía items de $999.999 | Sin filtro estadístico de outliers | Remoción de outliers por método IQR |
+| Comparación absurda de categorías | "gasté 5k en aguacate" vs avg $80k (planchas de pelo) | Sin sanity check de ratio entre precio pagado y precio Éxito | Guard: solo activa si precio pagado está entre 10% y 2000% del avg |
+| Contaminación de categorías mixtas | Precios de comida y accesorios mezclados | IQR no suficiente cuando max/min > 8x | Si dispersión > 8x, conservar solo precios por debajo de la mediana |
+| `consumer_trends` vacía tras deploy | Alertas de hype nunca funcionaban | Tabla no existía en Supabase (SQL no ejecutado) | Crear tabla en Supabase; cron de Vercel la puebla diariamente |
+| Trends scraper no guardaba en Vercel | "ADVERTENCIA: tabla no existe" | Tabla `consumer_trends` ausente en Supabase | Usuario ejecutó el SQL de creación en Supabase Studio |
+| `VERCEL_URL` cambiaba en cada deploy | Potencial fallo de self-calls en prod | `VERCEL_URL` es deployment-specific, no el alias permanente | Eliminado: ya no se usan self-calls HTTP en el chat |
+
+---
+
+## 17. Arquitectura de archivos relevantes
+
+```
+src/
+├── app/
+│   ├── api/
+│   │   ├── chat/route.ts          ← Núcleo del agente (Gemini + localFallback)
+│   │   ├── prices/exito/route.ts  ← Endpoint público del comparador
+│   │   ├── trends/fetch/route.ts  ← Scraper de trends24.in + insert Supabase
+│   │   ├── transactions/route.ts  ← CRUD de movimientos
+│   │   ├── metas/route.ts         ← CRUD de metas
+│   │   ├── budgets/route.ts       ← CRUD de presupuestos
+│   │   ├── groups/route.ts        ← CRUD de grupos
+│   │   ├── alerts/hormiga/route.ts← Análisis de gastos hormiga
+│   │   ├── leak-buster/graph/     ← Datos para el grafo D3
+│   │   └── profile/route.ts       ← Perfil + recalcular FinScore
+│   └── (pages)/
+│       ├── app/page.tsx           ← Contenedor principal (5 tabs)
+│       └── sign-in/sign-up/       ← Rutas de auth Clerk
+├── components/demo/
+│   ├── HomeView.tsx               ← Saldo, FinScore, desglose
+│   ├── ChatView.tsx               ← Interfaz del chat + ejecutor de actions
+│   ├── AnalyticsView.tsx          ← Grafo D3 + presupuesto
+│   ├── MetasView.tsx              ← Lista y creación de metas
+│   ├── HistorialView.tsx          ← Lista de transacciones
+│   └── ForceGraph.tsx             ← Componente D3 force-directed
+└── lib/
+    ├── prices.ts                  ← Lógica compartida VTEX (nuevo)
+    ├── lukas-ai-system.ts         ← System prompt y guía de actions para Gemini
+    ├── lukas-user.ts              ← Helper para obtener usuario actual
+    └── supabase/
+        └── admin.ts               ← Cliente Supabase con service role
+
+scripts/
+├── scraper_market.py              ← Playwright scraper semanal
+├── requirements.txt               ← Dependencias Python
+└── Dockerfile                     ← Imagen para GitHub Actions
+
+.github/workflows/
+└── prices_pipeline.yml            ← Cron semanal del scraper Python
+
+.vercel/
+└── project.json                   ← Vinculación proyecto Vercel
+
+vercel.json                        ← Config Vercel + cron diario de trends
+```

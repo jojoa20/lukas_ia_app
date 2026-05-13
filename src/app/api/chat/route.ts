@@ -3,6 +3,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureProfile, getLukasUser } from '@/lib/lukas-user'
 import { LUKAS_AI_ACTION_GUIDE } from '@/lib/lukas-ai-system'
+import { fetchExitoPrice } from '@/lib/prices'
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'dummy_key_for_build')
 
@@ -529,7 +530,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     messages = Array.isArray(body.messages) ? body.messages : []
 
-    const [{ data: profileRows }, { data: recentTx }, { data: metas }, { data: budgets }, { data: groups }, { data: trends }] = await Promise.all([
+    const [{ data: profileRows }, { data: recentTx }, { data: metas }, { data: budgets }, { data: groups }] = await Promise.all([
       adminDB.from('profiles').select('*').eq('id', userId).limit(1),
       adminDB
         .from('transactions')
@@ -556,25 +557,20 @@ export async function POST(req: NextRequest) {
         .select('groups(*)')
         .eq('user_id', userId)
         .limit(8),
-      adminDB
-        .from('consumer_trends')
-        .select('*')
-        .order('hype_score', { ascending: false })
-        .limit(10),
     ])
     const profile = profileRows?.[0]
 
-    let activeTrends = trends;
-    // Fallback scraping de tendencias si la tabla está vacía
-    if (!activeTrends || activeTrends.length === 0) {
-      try {
-        const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000';
-        const res = await fetch(`${baseUrl}/api/trends/fetch`);
-        const json = await res.json();
-        if (json.success && json.data) activeTrends = json.data;
-      } catch (e) {
-        console.error("Fallback scraping falló", e);
-      }
+    // consumer_trends puede no existir en la DB — nunca bloquea el chat
+    let activeTrends: any[] | null = null;
+    try {
+      const { data } = await adminDB
+        .from('consumer_trends')
+        .select('*')
+        .order('hype_score', { ascending: false })
+        .limit(10);
+      activeTrends = data;
+    } catch {
+      // tabla no existe, simplemente no hay alertas de hype
     }
 
     const groupNames = groups
@@ -602,13 +598,9 @@ export async function POST(req: NextRequest) {
 
     if (isSpendingMention && detectedAmount && productQuery && productQuery.length > 3) {
       try {
-        const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000';
-        const priceRes = await fetch(`${baseUrl}/api/prices/exito?q=${encodeURIComponent(productQuery)}`, {
-          signal: AbortSignal.timeout(6000)
-        });
-        const priceJson = await priceRes.json();
+        const priceJson = await fetchExitoPrice(productQuery, 6000);
         if (priceJson.success && priceJson.avg_price) {
-          priceResult = { avg_price: priceJson.avg_price, min_price: priceJson.min_price, max_price: priceJson.max_price }
+          priceResult = { avg_price: priceJson.avg_price, min_price: priceJson.min_price!, max_price: priceJson.max_price! }
           const userPaid = detectedAmount;
           const exitoAvg = priceJson.avg_price;
           const diff = userPaid - exitoAvg;
@@ -620,7 +612,7 @@ export async function POST(req: NextRequest) {
             : 'PRECIO JUSTO: el precio pagado está dentro del rango normal de Éxito';
           priceContext = `\n- COMPARACIÓN DE PRECIO para "${productQuery}": el usuario pagó $${userPaid.toLocaleString()} COP. En Éxito el precio promedio es $${exitoAvg.toLocaleString()} COP (rango: $${priceJson.min_price?.toLocaleString()} - $${priceJson.max_price?.toLocaleString()}). VEREDICTO: ${verdict}. USA ESTA INFO para comentar si fue una buena compra o no y si debe registrar el gasto.`
         }
-      } catch (e) {
+      } catch {
         // No bloquear si Éxito no responde
       }
     }
@@ -664,7 +656,9 @@ CONTEXTO ACTUAL DEL USUARIO:
       const diff = detectedAmount - exitoAvg
       const diffPct = Math.round(Math.abs(diff) / exitoAvg * 100)
 
-      if (Math.abs(diff) > exitoAvg * 0.15) {
+      // Sanity check: if user paid < 10% or > 20x the Éxito avg, categories likely mismatch
+      const ratioOk = detectedAmount >= exitoAvg * 0.1 && detectedAmount <= exitoAvg * 20;
+      if (Math.abs(diff) > exitoAvg * 0.15 && ratioOk) {
         const cleanDesc = (productQuery.charAt(0).toUpperCase() + productQuery.slice(1)).trim()
         const category = classifyExpense(latestText)
         const isOverpaid = diff > 0
