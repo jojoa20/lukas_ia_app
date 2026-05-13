@@ -95,17 +95,24 @@ export async function POST(req: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const { data: profiles } = await adminDB.from('profiles').select('balance_actual, finscore_actual').eq('id', userId).limit(1)
+  // Update balance
+  const { data: profiles } = await adminDB.from('profiles').select('balance_actual').eq('id', userId).limit(1)
   const profile = profiles?.[0]
   const currentBalance = profile?.balance_actual || 0
   const balance_actual = parsed.data.tipo === 'ingreso'
     ? currentBalance + parsed.data.monto
     : currentBalance - parsed.data.monto
-  const finscore_actual = parsed.data.es_gasto_hormiga
-    ? Math.max(0, (profile?.finscore_actual || 500) - 5)
-    : profile?.finscore_actual
 
-  await adminDB.from('profiles').update({ balance_actual, finscore_actual }).eq('id', userId)
+  await adminDB.from('profiles').update({ balance_actual }).eq('id', userId)
+
+  // Trigger async FinScore recalculation (fire-and-forget)
+  try {
+    const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'
+    fetch(`${baseUrl}/api/profile/recalculate-score`, {
+      method: 'POST',
+      headers: { cookie: req.headers.get('cookie') || '' },
+    }).catch(() => { /* non-blocking */ })
+  } catch { /* non-blocking */ }
 
   return NextResponse.json({ data }, { status: 201 })
 }

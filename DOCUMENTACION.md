@@ -3,30 +3,39 @@
 ## Arquitectura General
 
 ```
-lukas_ia_app1/
+lukas_ia_app/
 ├── src/
 │   ├── app/                    # Next.js App Router
 │   │   ├── api/
 │   │   │   ├── chat/           # Agente principal de IA (Gemini 2.5 Flash)
 │   │   │   ├── profile/        # Perfil y saldo del usuario
+│   │   │   │   └── recalculate-score/  # Recalcula FinScore manualmente
 │   │   │   ├── transactions/   # Registro de gastos e ingresos
 │   │   │   ├── metas/          # Metas de ahorro
-│   │   │   ├── budgets/        # Presupuestos por categoría
+│   │   │   ├── budgets/        # Presupuestos por categoría (POST + summary)
+│   │   │   ├── groups/         # Grupos financieros compartidos
+│   │   │   ├── alerts/
+│   │   │   │   ├── hormiga/    # Detección de gastos hormiga (patterns)
+│   │   │   │   └── leak-buster/ # Alertas globales de fugas
+│   │   │   ├── leak-buster/
+│   │   │   │   └── graph/      # Datos para grafo D3 (nodos + links)
 │   │   │   ├── trends/fetch/   # Scraper de tendencias (X Colombia)
-│   │   │   └── prices/exito/   # Comparador de precios en Éxito.com
+│   │   │   └── prices/exito/   # Comparador de precios Éxito.com (VTEX API)
 │   │   ├── app/                # Vista de la app móvil (autenticado)
 │   │   ├── sign-in/            # Página de login (Clerk)
 │   │   └── sign-up/            # Página de registro (Clerk)
 │   ├── components/
 │   │   ├── demo/
 │   │   │   ├── DemoContainer.tsx   # Contenedor principal — maneja tabs y chat global
-│   │   │   ├── ChatView.tsx        # Interfaz de chat con Lukas (estado persistente)
-│   │   │   ├── HomeView.tsx        # Pantalla inicio: saldo, FinScore, racha
+│   │   │   ├── ChatView.tsx        # Interfaz de chat con Lukas (estado persistente por tab)
+│   │   │   ├── HomeView.tsx        # Inicio: saldo, FinScore, racha, desglose real de gastos
 │   │   │   ├── MetasView.tsx       # CRUD de metas de ahorro
 │   │   │   ├── HistorialView.tsx   # Historial de transacciones
-│   │   │   └── AnalyticsView.tsx   # Análisis y gráficos con datos reales
+│   │   │   ├── AnalyticsView.tsx   # Análisis: donut presupuesto + grafo D3 + movimientos
+│   │   │   ├── ForceGraph.tsx      # Grafo D3 force-directed interactivo de gastos
+│   │   │   └── AlertModal.tsx      # Modal de alertas de gastos hormiga
 │   │   └── mobile/
-│   │       ├── MobileHeader.tsx    # Header con Clerk UserButton
+│   │       ├── MobileHeader.tsx
 │   │       └── MobileBottomBar.tsx
 │   ├── lib/
 │   │   ├── supabase/
@@ -35,8 +44,8 @@ lukas_ia_app1/
 │   │   │   ├── admin.ts        # Cliente admin con SERVICE_ROLE_KEY
 │   │   │   └── middleware.ts   # Actualización de sesión Supabase en proxy
 │   │   ├── lukas-user.ts       # Helper: obtener usuario Clerk + perfil Supabase
-│   │   └── lukas-ai-system.ts  # System prompt del agente Lukas
-│   └── proxy.ts                # Proxy de Next.js 16 (auth Clerk + sesión Supabase)
+│   │   └── lukas-ai-system.ts  # System prompt del agente Lukas (secciones 1–9)
+│   └── proxy.ts                # Proxy Next.js 16 (auth Clerk + sesión Supabase)
 ├── scripts/
 │   ├── scraper_market.py       # Scraper Playwright para Éxito.com → external_data.market_prices
 │   ├── external_data_schema.sql # SQL: schema external_data + tabla market_prices
@@ -68,11 +77,9 @@ NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
 NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
 NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/app
 NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/app
-
-# ElevenLabs (opcional - voz)
-ELEVENLABS_API_KEY="sk_..."
-ELEVENLABS_VOICE_ID="..."
 ```
+
+> **Importante:** El archivo `.env.local` **nunca se sube a GitHub** (está en `.gitignore`). Pídele las claves al responsable del proyecto.
 
 ---
 
@@ -84,9 +91,9 @@ ELEVENLABS_VOICE_ID="..."
 | Autenticación | Clerk (@clerk/nextjs) |
 | Base de Datos | Supabase (PostgreSQL) |
 | IA del Agente | Google Gemini 2.5 Flash |
-| Scraping Web | Cheerio (tendencias), Playwright (mercado) |
+| Visualización | D3.js v7 (grafo force-directed) |
 | Animaciones | Framer Motion |
-| Estilos | Tailwind CSS |
+| Estilos | Tailwind CSS v4 |
 | Lenguaje | TypeScript |
 
 ---
@@ -101,43 +108,47 @@ ChatView.tsx (componente)
 POST /api/chat/route.ts
         ↓
   1. Obtener usuario (Clerk → Supabase)
-  2. Cargar contexto financiero (perfil, transacciones, metas)
-  3. Detectar si menciona un gasto → consultar /api/prices/exito
-  4. Si hay Gemini API Key → Gemini 2.5 Flash con contexto completo
-     Si no → localFallback() (reglas determinísticas)
+  2. Cargar contexto financiero (perfil, transacciones, metas, presupuestos, tendencias)
+  3. Detectar si menciona un gasto → consultar /api/prices/exito (VTEX API en tiempo real)
+  4. Intercept de precio: si diff > ±15% → generar respuesta directa sin pasar por Gemini
+  5. Si intento determinístico → localFallback() (reglas sin llamar IA)
+  6. Si no → Gemini 2.5 Flash con contexto completo
         ↓
-  Respuesta con <action> tags JSON
+  Respuesta con <action> tags JSON (invisible para el usuario)
         ↓
 ChatView.tsx parsea:
-  - cleanContent() → elimina tags, muestra texto limpio
-  - parseActions() → extrae JSON de acciones
-  - executeActions() → llama APIs (transactions, metas, profile, budgets)
+  - cleanContent()    → elimina tags, muestra texto limpio
+  - parseActions()    → extrae JSON de acciones
+  - executeActions()  → llama APIs (transactions, metas, profile, budgets, groups)
         ↓
-  onNavigate() → cambia tab automáticamente
-  onRefreshData() → recarga datos en vistas
+  onRefreshData() → recarga datos en la vista activa
+  (NO cambia de tab automáticamente — el usuario permanece en el chat)
 ```
+
+**Regla de navegación:** El agente SOLO cambia de tab cuando el usuario lo pide explícitamente ("ir a metas", "ver historial", "abre grupos"). Registrar gastos, ingresos, metas o actualizar saldo NO cambia de pestaña.
 
 ---
 
 ## Sistema de Acciones del Agente
 
 El backend embebe acciones en la respuesta usando tags `<action>{JSON}</action>`.
-El frontend los parsea y ejecuta. Tipos disponibles:
+El frontend los parsea y ejecuta en `ChatView.tsx → executeActions()`.
 
-| Tipo de Acción | Qué hace |
-|---------------|----------|
-| `ADD_TRANSACTION` | POST /api/transactions — registra gasto/ingreso |
-| `ADD_GASTO_HORMIGA` | POST /api/transactions con `es_gasto_hormiga: true` |
-| `CREATE_GOAL` | POST /api/metas — crea meta de ahorro |
-| `SET_CURRENT_BALANCE` | PUT /api/profile — actualiza saldo disponible |
-| `CREATE_BUDGET` | POST /api/budgets — crea presupuesto por categoría |
-| `NAVIGATE` | Cambia de tab en la app |
+| Tipo de Acción | Qué hace | API llamada |
+|---------------|----------|-------------|
+| `ADD_TRANSACTION` | Registra gasto o ingreso | POST /api/transactions |
+| `ADD_GASTO_HORMIGA` | Registra gasto hormiga (pequeño y repetitivo) | POST /api/transactions con es_gasto_hormiga: true |
+| `CREATE_GOAL` | Crea meta de ahorro | POST /api/metas |
+| `SET_CURRENT_BALANCE` | Actualiza saldo disponible | PUT /api/profile |
+| `CREATE_BUDGET` | Crea presupuesto por categoría | POST /api/budgets |
+| `CREATE_GROUP` | Crea grupo financiero y envía invitación | POST /api/groups |
+| `SET_GROUP_PERSONAL_BUDGET` | Asigna presupuesto personal en Grupos | PATCH /api/groups |
+| `NAVIGATE` | Cambia de tab (solo cuando el usuario lo pide) | — |
 
 **Ejemplo de respuesta del agente:**
 ```
-Listo, registro ese gasto.
-<action>{"type":"ADD_TRANSACTION","monto":30000,"tipo":"gasto","descripcion":"panel de huevos","categoria":"Salidas"}</action>
-<action>{"type":"NAVIGATE","page":"home"}</action>
+Listo pana, registro ese gasto en Salidas.
+<action>{"type":"ADD_TRANSACTION","monto":30000,"tipo":"gasto","descripcion":"Panel de huevos","categoria":"Salidas","subcategoria":"Panel de huevos","es_gasto_hormiga":false}</action>
 ```
 
 ---
@@ -146,26 +157,121 @@ Listo, registro ese gasto.
 
 **Endpoint:** `GET /api/prices/exito?q=panel+de+huevos`
 
-**Funcionamiento:**
-1. Detecta automáticamente cuando el usuario menciona un gasto
-2. Extrae el nombre del producto de la frase natural
-3. Consulta Éxito.com en tiempo real con Cheerio
-4. Calcula si el precio pagado fue caro/barato/justo (±15% del promedio)
-5. Inyecta el veredicto en el contexto de Gemini
-6. Gemini responde con consejo personalizado
+**Cómo funciona:**
+1. El chat detecta automáticamente frases de gasto ("compré", "gasté", "pagué")
+2. Extrae el nombre del producto del mensaje en lenguaje natural
+3. Consulta la **VTEX API de Éxito** en tiempo real (no scraping HTML)
+   - URL: `https://www.exito.com/io/api/catalog_system/pub/products/search/{query}`
+4. Calcula si el precio pagado fue caro/barato/justo (umbral ±15% del precio promedio)
+5. Si la diferencia es significativa, genera respuesta directa sin pasar por Gemini
+
+**Veredictos y respuestas:**
+| Situación | Condición | Respuesta de Lukas |
+|-----------|-----------|-------------------|
+| CARO | Pagaste >15% más que Éxito | "¡Uy pana, te dejaste tumbar! 😬 Pagaste $X por Y y en Éxito está a $Z..." |
+| BARATO | Pagaste >15% menos que Éxito | "¡Buena compra, pana! 🎯 Ahorraste $X vs Éxito..." |
+| PRECIO JUSTO | Diferencia ≤15% | Solo registra el gasto, sin comentar el precio |
+
+En todos los casos se registra la transacción automáticamente con `ADD_TRANSACTION`.
 
 **Respuesta del endpoint:**
 ```json
 {
   "success": true,
   "query": "panel de huevos",
-  "source": "Éxito Colombia",
+  "source": "Éxito Colombia (VTEX API)",
+  "count": 5,
   "avg_price": 22000,
-  "min_price": 18900,
-  "max_price": 26500,
-  "prices": [22000, 19900, 26500]
+  "min_price": 9400,
+  "max_price": 26900,
+  "products": [
+    { "name": "Huevos Kike x12", "brand": "Kike", "price": 9400 }
+  ]
 }
 ```
+
+---
+
+## Grafo D3 de Gastos (Radar de Gastos)
+
+**Componente:** `src/components/demo/ForceGraph.tsx`
+**Endpoint de datos:** `GET /api/leak-buster/graph?period=month`
+
+El grafo es una visualización interactiva tipo **force-directed** usando D3.js v7.
+
+**Estructura de nodos:**
+| Tipo | Color | Descripción |
+|------|-------|-------------|
+| `center` | Azul marino con borde dorado | Nodo raíz — muestra total gastado |
+| `category` | Dorado translúcido | Categorías: Fijos, Salidas, Susc. |
+| `subcategory` | Blanco suave | Subcategorías/descripciones |
+| `subcategory` (alerta) | Rojo/naranja con glow | Posible fuga o gasto hormiga |
+
+**Interacción:**
+- Toca un nodo → muestra panel inferior con nombre y monto
+- Arrastra nodos → el grafo se reorganiza (draggable con D3 drag)
+- Fugas detectadas → contador inferior en rojo
+
+---
+
+## Desglose de Gastos (HomeView)
+
+El card "Desglose de Gastos" en Home muestra las categorías **siempre**, con o sin presupuesto activo.
+
+**Fuente de datos:** `GET /api/transactions?limit=100` (últimas 100 transacciones)
+
+**Categorías mostradas:**
+| Categoría | Color | Incluye |
+|-----------|-------|---------|
+| Fijos | Azul | Arriendo, servicios, mercado — `categoria === 'Fijos'` |
+| Salidas | Verde | Restaurantes, ocio, transporte — `categoria === 'Salidas'` |
+| Susc. | Morado | Netflix, Spotify, suscripciones — `categoria === 'Susc.'` |
+| Hormigas | Rojo-naranja | Gastos con `es_gasto_hormiga === true` |
+
+Si hay presupuesto activo, muestra adicionalmente el % usado del presupuesto.
+
+---
+
+## Sistema de Alertas
+
+### Gastos Hormiga
+Un gasto es "hormiga" cuando:
+- Monto ≤ $80.000 COP
+- Ocurre 3+ veces en 30 días en la misma categoría semántica
+- Ejemplos típicos: tintos, snacks, domicilios frecuentes, Uber cortos
+
+**Endpoint:** `GET /api/alerts/hormiga?days=30`
+
+### Alertas de Presupuesto
+Si una categoría supera el 80% del presupuesto al registrar un gasto, Lukas avisa:
+> "⚠️ Con esto llevas el 87% de tu presupuesto de Salidas este mes. Cuidado pana."
+
+### Alertas de Hype (Compra Impulsiva)
+Si el artículo está en tendencia (X Colombia con hype_score ≥ 80), Lukas pregunta antes de registrar:
+> "¡Ojo ahí, pana! Noto que 'Stanley Cup' está súper de moda. ¿Estás seguro?"
+
+---
+
+## FinScore
+
+Puntuación financiera de 0 a 1000 calculada automáticamente.
+
+| Factor | Puntos |
+|--------|--------|
+| Base | 500 |
+| Presupuesto activo | +50 |
+| Meta activa | +50 |
+| Racha ≥7 días | +50 |
+| Racha ≥30 días | +100 |
+| Gasto hormiga detectado | -30 por patrón |
+| Inactividad >7 días | -50 |
+
+Escala:
+- 801-1000: ⭐ Excelente
+- 601-800: 🟢 Saludable
+- 401-600: 🟡 Estable
+- 201-400: 🟠 En riesgo
+- 0-200: 🔴 Crítico
 
 ---
 
@@ -189,7 +295,6 @@ python scraper_market.py
 ### Schema de Base de Datos
 
 ```sql
--- Esquema dedicado (no contamina el schema público)
 CREATE SCHEMA IF NOT EXISTS external_data;
 
 CREATE TABLE external_data.market_prices (
@@ -209,18 +314,26 @@ CREATE TABLE external_data.market_prices (
 ## Cómo Correr el Proyecto Localmente
 
 ```bash
-# 1. Instalar dependencias
+# 1. Clonar el repositorio
+git clone https://github.com/jojoa20/lukas_ia_app.git
+cd lukas_ia_app
+
+# 2. Instalar dependencias
 npm install
 
-# 2. Configurar variables de entorno
+# 3. Configurar variables de entorno (pedir claves al equipo)
 cp .env.example .env.local
-# (llenar con tus llaves reales)
 
-# 3. Correr servidor de desarrollo
+# 4. Correr servidor de desarrollo
 npm run dev
 
-# 4. Abrir en el navegador
+# 5. Abrir en el navegador
 # http://localhost:3000
+```
+
+Para matar el servidor si se cuelga:
+```bash
+pkill -f "next dev" && rm -f .next/dev/lock
 ```
 
 ---
@@ -229,7 +342,7 @@ npm run dev
 
 - El archivo `.env.local` **nunca se sube a GitHub** (está en `.gitignore`)
 - Los clientes de Supabase tienen fallbacks para no crashear sin variables de entorno
-- Las rutas de la API están protegidas por `clerkMiddleware` en `proxy.ts`
+- Las rutas de la API están protegidas por `clerkMiddleware` en `src/proxy.ts`
 - Los datos del usuario están aislados por RLS (Row Level Security) en Supabase
 - El `SUPABASE_SERVICE_ROLE_KEY` solo se usa en el servidor (nunca expuesto al cliente)
 
@@ -243,5 +356,23 @@ npm run dev
 | `Publishable key not valid` | Clerk key incorrecta | Verificar `.env.local` |
 | `auth() called but no clerkMiddleware` | proxy.ts mal configurado | Verificar `src/proxy.ts` |
 | `Supabase URL/Key required` | Variables de entorno vacías | Los clientes usan fallback automático |
-| Chat muestra `<action>` tags | Bug de parsing | Verificado y corregido en `ChatView.tsx` |
-| `30 mil → 30000000` | Bug de parseAmount | Verificado y corregido en `chat/route.ts` |
+| `Can't resolve 'tailwindcss'` | Turbopack no encuentra Tailwind | Ya corregido en `next.config.mjs` con `resolveAlias` |
+| Chat muestra `<action>` tags | Bug de parsing en frontend | Verificado y corregido en `ChatView.tsx` |
+| Precios Éxito devuelven 308 | URL incorrecta `/api/` en vez de `/io/api/` | Ya corregido — usar `exito.com/io/api/...` |
+
+---
+
+## Historial de Cambios Relevantes (rama `djojo-mvp-final`)
+
+### Mayo 2026
+- **ForceGraph.tsx** — Grafo D3 force-directed interactivo en AnalyticsView (Radar de Gastos)
+- **HomeView desglose** — Muestra categorías reales desde transacciones, sin requerir presupuesto activo
+- **Chat sin auto-navegación** — El agente no cambia de tab al registrar gastos/ingresos/metas
+- **Comparador de precios** — Pipeline completo: detecta gasto → VTEX API → "te dejaste tumbar" / "buena compra"
+- **Éxito VTEX API** — URL corregida a `/io/api/` (devuelve precios reales en COP)
+- **Alertas de presupuesto y metas** — Tips automáticos al registrar gastos significativos
+- **POST /api/budgets** — Endpoint faltante que causaba falla silenciosa en `CREATE_BUDGET`
+- **HistorialView / MetasView** — Reescritos (archivos tenían encoding mojibake)
+- **AnalyticsView** — Corregido tipo de dato `BudgetSummary` vs `Budget[]`
+- **Hype alert** — Corregida lógica de detección de compra impulsiva
+- **Groups / GroupBudget** — Manejadores `CREATE_GROUP` y `SET_GROUP_PERSONAL_BUDGET` en ChatView

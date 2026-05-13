@@ -11,6 +11,25 @@ interface Profile {
   balance_actual: number;
 }
 
+interface BudgetSummary {
+  total_presupuestado: number;
+  total_gastado: number;
+  porcentaje_total: number;
+}
+
+interface LeakData {
+  total_hormiga: number;
+  cantidad_clusters: number;
+  mensaje_ia: string;
+}
+
+interface Transaction {
+  tipo: "ingreso" | "gasto";
+  monto: number;
+  categoria: string;
+  es_gasto_hormiga: boolean;
+}
+
 function AnimatedNumber({ value }: { value: number }) {
   const [displayValue, setDisplayValue] = useState(0);
   useEffect(() => {
@@ -30,24 +49,42 @@ function formatCOP(v: number) {
 
 export default function HomeView({ onOpenAlert }: { onOpenAlert?: () => void }) {
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [budget, setBudget] = useState<BudgetSummary | null>(null);
+  const [leakData, setLeakData] = useState<LeakData | null>(null);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const { isLoaded, isSignedIn, user } = useUser();
 
   useEffect(() => {
-    fetch('/api/profile')
-      .then(res => res.json())
-      .then(json => {
-        if (json.data) setProfile(json.data);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+    Promise.all([
+      fetch('/api/profile').then(r => r.json()).catch(() => ({ data: null })),
+      fetch('/api/budgets/summary').then(r => r.json()).catch(() => ({ data: null })),
+      fetch('/api/alerts/hormiga?days=30').then(r => r.json()).catch(() => ({ data: null })),
+      fetch('/api/transactions?limit=100').then(r => r.json()).catch(() => ({ data: [] })),
+    ]).then(([profileJson, budgetJson, leakJson, txJson]) => {
+      if (profileJson.data) setProfile(profileJson.data);
+      if (budgetJson.data) setBudget(budgetJson.data);
+      if (leakJson.data) setLeakData(leakJson.data);
+      if (txJson.data) setTransactions(txJson.data);
+      setLoading(false);
+    }).catch(() => setLoading(false));
   }, []);
 
   const name = user?.firstName || profile?.full_name || "Parcero";
   const score = profile?.finscore_actual || 0;
   const racha = profile?.racha_actual_dias || 0;
   const balance = profile?.balance_actual || 0;
+
+  // Calculos para el diagrama visual
+  const gastos = transactions.filter(t => t.tipo === 'gasto');
+  const txFijos = gastos.filter(t => t.categoria === 'Fijos' && !t.es_gasto_hormiga).reduce((s, t) => s + t.monto, 0);
+  const txSalidas = gastos.filter(t => t.categoria === 'Salidas' && !t.es_gasto_hormiga).reduce((s, t) => s + t.monto, 0);
+  const txSusc = gastos.filter(t => t.categoria === 'Susc.' && !t.es_gasto_hormiga).reduce((s, t) => s + t.monto, 0);
+  const txHormigas = gastos.filter(t => t.es_gasto_hormiga).reduce((s, t) => s + t.monto, 0);
+  const txTotal = Math.max(txFijos + txSalidas + txSusc + txHormigas, 1);
+
+  const presTotal = budget?.total_presupuestado || 1;
 
   return (
     <motion.div
@@ -126,7 +163,7 @@ export default function HomeView({ onOpenAlert }: { onOpenAlert?: () => void }) 
             <motion.path
               d="M 10 90 A 80 80 0 0 1 190 90"
               fill="none"
-              stroke="#D8A93F"
+              stroke={score >= 801 ? "#D8A93F" : score >= 601 ? "#22c55e" : score >= 401 ? "#eab308" : score >= 201 ? "#f97316" : "#ef4444"}
               strokeWidth="12"
               strokeLinecap="round"
               strokeDasharray="251.2"
@@ -137,43 +174,101 @@ export default function HomeView({ onOpenAlert }: { onOpenAlert?: () => void }) 
           </svg>
           <div className="absolute inset-x-0 bottom-2 flex flex-col items-center">
             <span className="text-white/50 text-xs mb-1 uppercase tracking-widest">FinScore</span>
-            <span className="text-[#D8A93F] text-[46px] font-black tracking-tighter leading-none">
+            <span className="text-[46px] font-black tracking-tighter leading-none" style={{ color: score >= 801 ? "#D8A93F" : score >= 601 ? "#22c55e" : score >= 401 ? "#eab308" : score >= 201 ? "#f97316" : "#ef4444" }}>
               <AnimatedNumber value={score} />
             </span>
           </div>
         </div>
+        <span className="text-xs font-bold uppercase tracking-wider mt-1" style={{ color: score >= 801 ? "#D8A93F" : score >= 601 ? "#22c55e" : score >= 401 ? "#eab308" : score >= 201 ? "#f97316" : "#ef4444" }}>
+          {score >= 801 ? "⭐ Excelente" : score >= 601 ? "🟢 Saludable" : score >= 401 ? "🟡 Estable" : score >= 201 ? "🟠 En riesgo" : "🔴 Crítico"}
+        </span>
       </div>
 
-      {/* Quick stats grid */}
-      <div className="grid grid-cols-2 gap-3 mb-5">
-        <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
-          <div className="text-[12px] font-bold text-white/60 mb-2 uppercase tracking-wide">Presupuesto</div>
-          {loading ? (
-            <div className="h-3 bg-white/10 rounded animate-pulse" />
-          ) : (
-            <>
-              <div className="h-1.5 w-full bg-[#111827] rounded-full overflow-hidden mb-2">
-                <div
-                  className="h-full bg-[#D8A93F] rounded-full transition-all"
-                  style={{ width: `${Math.min(100, Math.round(((profile as any)?.gastado_cop || 0) / Math.max((profile as any)?.limite_cop || 1, 1) * 100))}%` }}
+      {/* DIAGRAMA DE PRESUPUESTO Y HORMIGAS */}
+      <div className="bg-white/5 p-5 rounded-2xl border border-white/10 mb-5 relative overflow-hidden shadow-lg">
+        <div className="flex justify-between items-center mb-4">
+          <div className="text-[12px] font-bold text-white/60 uppercase tracking-wide">Desglose de Gastos</div>
+          {leakData && leakData.total_hormiga > 0 && (
+            <button onClick={() => setShowModal(true)} className="text-[10px] bg-[#F36E53]/20 text-[#F36E53] px-2 py-1 rounded font-bold animate-pulse">
+              {leakData.cantidad_clusters} Patrones 🐜
+            </button>
+          )}
+        </div>
+        
+        {loading ? (
+          <div className="space-y-2">
+            <div className="h-4 bg-white/10 rounded animate-pulse" />
+            <div className="h-3 bg-white/10 rounded animate-pulse w-3/4" />
+          </div>
+        ) : txTotal > 1 ? (
+          <>
+            {/* Barra segmentada por categoria */}
+            <div className="h-4 w-full bg-[#111827] rounded-full overflow-hidden mb-3 flex drop-shadow-md border border-white/5">
+              {[
+                { pct: (txFijos / txTotal) * 100, color: 'bg-blue-400/70' },
+                { pct: (txSalidas / txTotal) * 100, color: 'bg-green-400/70' },
+                { pct: (txSusc / txTotal) * 100, color: 'bg-purple-400/70' },
+                { pct: (txHormigas / txTotal) * 100, color: 'bg-[#F36E53]' },
+              ].filter(s => s.pct > 0).map((seg, i) => (
+                <motion.div
+                  key={i}
+                  className={`h-full ${seg.color}`}
+                  initial={{ width: 0 }}
+                  animate={{ width: `${seg.pct}%` }}
+                  transition={{ duration: 1, ease: "easeOut", delay: i * 0.1 }}
                 />
-              </div>
-              <div className="text-[10px] text-white/40 text-right">Ver detalles →</div>
-            </>
-          )}
-        </div>
-        <div className="bg-white/5 p-4 rounded-2xl border border-white/10 cursor-pointer active:scale-95 transition-transform" onClick={() => setShowModal(true)}>
-          <div className="text-[12px] font-bold text-white/60 mb-2 uppercase tracking-wide">Alertas</div>
-          {loading ? (
-            <div className="h-3 bg-white/10 rounded animate-pulse" />
-          ) : (
-            <div className="flex items-center gap-2 mt-1">
-              <div className="w-2 h-2 bg-[#D8A93F] rounded-full animate-ping" />
-              <span className="text-xs text-[#D8A93F] font-bold">Toca para ver</span>
+              ))}
             </div>
-          )}
-        </div>
+
+            {/* Categorias */}
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+              {[
+                { label: 'Fijos', amount: txFijos, color: 'bg-blue-400/70', icon: '🏠' },
+                { label: 'Salidas', amount: txSalidas, color: 'bg-green-400/70', icon: '💸' },
+                { label: 'Susc.', amount: txSusc, color: 'bg-purple-400/70', icon: '📱' },
+                { label: 'Hormigas', amount: txHormigas, color: 'bg-[#F36E53]', icon: '🐜' },
+              ].map(cat => (
+                <div key={cat.label} className="flex items-center gap-1.5">
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${cat.color}`} />
+                  <span className="text-white/50 text-[10px]">{cat.icon} {cat.label}:</span>
+                  <span className="text-white text-[10px] font-bold">{formatCOP(cat.amount)}</span>
+                </div>
+              ))}
+            </div>
+
+            {budget && budget.total_presupuestado > 0 && (
+              <div className="text-[10px] text-white/30 text-center mt-3 pt-3 border-t border-white/10">
+                Presupuesto: {budget.porcentaje_total}% usado de {formatCOP(presTotal)}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="text-center py-4">
+            <p className="text-[12px] text-white/40 mb-1">Aún no hay gastos registrados.</p>
+            <p className="text-[10px] text-[#D8A93F]">Dile algo a Lukas para empezar</p>
+          </div>
+        )}
       </div>
+
+      {/* Hormiga Tip — si hay gastos detectados */}
+      {leakData && leakData.total_hormiga > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="bg-[#F36E53]/10 border border-[#F36E53]/20 rounded-2xl p-4 mb-5 cursor-pointer active:scale-[0.98] transition-transform"
+          onClick={() => setShowModal(true)}
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">🐜</span>
+            <div className="flex-1">
+              <p className="text-white text-sm font-bold">Gastos Hormiga Detectados</p>
+              <p className="text-white/50 text-xs mt-0.5 line-clamp-2">{leakData.mensaje_ia}</p>
+            </div>
+            <span className="text-[#F36E53] font-black text-sm">${Math.round(leakData.total_hormiga / 1000)}k</span>
+          </div>
+        </motion.div>
+      )}
 
       <AnimatePresence>
         {showModal && <AlertModal onClose={() => setShowModal(false)} />}

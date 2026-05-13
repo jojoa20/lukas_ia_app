@@ -148,20 +148,46 @@ function isAffirmative(text: string) {
   return /^(si|sí|confirmo|dale|hagale|hágale|listo|ok|okay|correcto|seguro)\b/.test(text.trim().toLowerCase())
 }
 
+// ── Semantic cluster map for hormiga detection ──
+const HORMIGA_CLUSTERS: Record<string, string[]> = {
+  'cafe': ['cafe', 'tinto', 'coffee', 'cappuccino', 'latte', 'aromatica', 'aromática'],
+  'snack': ['snack', 'dulce', 'galleta', 'empanada', 'pan', 'arepa', 'buñuelo', 'pastel', 'postre', 'helado', 'brownie'],
+  'bebida': ['gaseosa', 'coca', 'jugo', 'agua', 'botella', 'soda', 'malteada'],
+  'domicilio': ['rappi', 'ifood', 'domicilio', 'delivery', 'uber eats', 'didi food'],
+  'transporte': ['uber', 'didi', 'taxi', 'beat', 'indriver', 'cabify'],
+  'suscripcion': ['netflix', 'spotify', 'prime', 'disney', 'hbo', 'youtube', 'suscripcion', 'app', 'premium'],
+  'licor': ['cerveza', 'aguardiente', 'ron', 'whiskey', 'vino', 'licor', 'trago'],
+  'antojo': ['maquina', 'máquina', 'antojo', 'impulso', 'capricho'],
+}
+
+function getSemanticCluster(text: string): string {
+  const lower = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  for (const [cluster, keywords] of Object.entries(HORMIGA_CLUSTERS)) {
+    for (const keyword of keywords) {
+      if (lower.includes(keyword.normalize('NFD').replace(/[\u0300-\u036f]/g, ''))) {
+        return cluster
+      }
+    }
+  }
+  return lower.substring(0, 15) // fallback: use first 15 chars
+}
+
 function isRecurringHormiga(text: string, amount: number | null, recentTx: any[] = []) {
-  if (!amount || amount > 20000) return false
-  const desc = extractDescription(text).toLowerCase()
-  const sevenDaysAgo = new Date()
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+  if (!amount || amount > 80000) return false
+  const desc = extractDescription(text)
+  const cluster = getSemanticCluster(desc)
+  const thirtyDaysAgo = new Date()
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
   const similar = recentTx.filter((tx) => {
-    const txDesc = (tx.descripcion || '').toLowerCase()
+    const txDesc = (tx.descripcion || tx.subcategoria || '').toLowerCase()
+    const txCluster = getSemanticCluster(txDesc)
     const txDate = new Date(tx.fecha_transaccion || tx.created_at || 0)
     return tx.tipo === 'gasto'
-      && tx.monto <= 20000
-      && txDate >= sevenDaysAgo
-      && (txDesc.includes(desc) || desc.includes(txDesc))
+      && tx.monto <= 80000
+      && txDate >= thirtyDaysAgo
+      && txCluster === cluster
   })
-  return similar.length >= 6
+  return similar.length >= 3
 }
 
 function localFallback(messages: ChatMessage[], snapshot: FinancialSnapshot = {}) {
@@ -283,7 +309,7 @@ function localFallback(messages: ChatMessage[], snapshot: FinancialSnapshot = {}
     if (!previousAmount) return { role: 'assistant', content: 'Pana, repiteme el saldo para confirmarlo.' }
     return {
       role: 'assistant',
-      content: `Listo, pana. Actualizo tu saldo actual a $${previousAmount.toLocaleString()}.\n<action>{"type":"SET_CURRENT_BALANCE","saldo":${previousAmount}}</action><action>{"type":"NAVIGATE","page":"home"}</action>`,
+      content: `Listo, pana. Actualizo tu saldo actual a $${previousAmount.toLocaleString()}.\n<action>{"type":"SET_CURRENT_BALANCE","saldo":${previousAmount}}</action>`,
     }
   }
 
@@ -321,7 +347,7 @@ function localFallback(messages: ChatMessage[], snapshot: FinancialSnapshot = {}
     const cleanName = goalName.charAt(0).toUpperCase() + goalName.slice(1)
     return {
       role: 'assistant',
-      content: `Listo, pana. Te creo la meta "${cleanName}" con prioridad ${priority === 1 ? 'alta' : priority === 2 ? 'media' : 'baja'}.\n<action>{"type":"CREATE_GOAL","nombre":"${cleanName}","monto":${goalAmount},"fecha_objetivo":"${targetDate}","prioridad":${priority}}</action><action>{"type":"NAVIGATE","page":"metas"}</action>`,
+      content: `Listo, pana. Te creo la meta "${cleanName}" con prioridad ${priority === 1 ? 'alta' : priority === 2 ? 'media' : 'baja'}.\n<action>{"type":"CREATE_GOAL","nombre":"${cleanName}","monto":${goalAmount},"fecha_objetivo":"${targetDate}","prioridad":${priority}}</action>`,
     }
   }
 
@@ -340,7 +366,7 @@ function localFallback(messages: ChatMessage[], snapshot: FinancialSnapshot = {}
 
     return {
       role: 'assistant',
-      content: `Listo. Asigno ${formatCOP(amount)} como tu presupuesto personal en Grupos.\n<action>{"type":"SET_GROUP_PERSONAL_BUDGET","monto":${amount}}</action><action>{"type":"NAVIGATE","page":"analytics","viewMode":"groups"}</action>`,
+      content: `Listo. Asigno ${formatCOP(amount)} como tu presupuesto personal en Grupos.\n<action>{"type":"SET_GROUP_PERSONAL_BUDGET","monto":${amount}}</action>`,
     }
   }
 
@@ -377,7 +403,7 @@ function localFallback(messages: ChatMessage[], snapshot: FinancialSnapshot = {}
     const cleanName = (name || 'Grupo').charAt(0).toUpperCase() + (name || 'Grupo').slice(1)
     return {
       role: 'assistant',
-      content: `Listo. Creo el grupo "${cleanName}" y envio la invitacion a ${email}. Queda creado; ahora debes esperar a que esa persona acepte la invitacion.\n<action>{"type":"CREATE_GROUP","nombre":"${cleanName}","tipo":"${tipo}","invite_email":"${email}"}</action><action>{"type":"NAVIGATE","page":"analytics","viewMode":"groups"}</action>`,
+      content: `Listo. Creo el grupo "${cleanName}" y envio la invitacion a ${email}. Queda creado; ahora debes esperar a que esa persona acepte la invitacion.\n<action>{"type":"CREATE_GROUP","nombre":"${cleanName}","tipo":"${tipo}","invite_email":"${email}"}</action>`,
     }
   }
 
@@ -388,27 +414,54 @@ function localFallback(messages: ChatMessage[], snapshot: FinancialSnapshot = {}
     
     // Alerta de Hype impulsivo
     const trendingItem = snapshot.trends?.find((t: any) => desc.toLowerCase().includes(t.item_name.toLowerCase()) && t.hype_score >= 80)
-    if (trendingItem && !isAffirmative(previousAssistant)) {
+    if (trendingItem && !previousAssistant.includes('nivel de viralidad')) {
       return {
         role: 'assistant',
         content: `¡Ojo ahí, pana! Noto que "${trendingItem.item_name}" está súper de moda ahorita en ${trendingItem.platform} (nivel de viralidad: ${trendingItem.hype_score}/100). ¿Estás seguro de que lo necesitas o es una compra impulsiva? Responde "si" para registrarlo de todas formas.`,
       }
     }
-    
+
     if (previousAssistant.includes('nivel de viralidad') && !isAffirmative(text)) {
-        return { role: 'assistant', content: 'Melo, pana. Mejor ahorramos esa plata.' }
+      return { role: 'assistant', content: 'Melo, pana. Mejor ahorramos esa plata.' }
     }
 
     const isHormiga = isRecurringHormiga(text, amount, recentTx)
     if (isHormiga) {
       return {
         role: 'assistant',
-        content: `Ojo con ese gasto pequeno, pana. Lo registro como hormiga para seguirle la pista si se repite.\n<action>{"type":"ADD_GASTO_HORMIGA","monto":${amount},"descripcion":"${desc}"}</action><action>{"type":"NAVIGATE","page":"home"}</action>`,
+        content: `Ojo con ese gasto pequeno, pana. Lo registro como hormiga para seguirle la pista si se repite.\n<action>{"type":"ADD_GASTO_HORMIGA","monto":${amount},"descripcion":"${desc}"}</action>`,
       }
     }
+
+    // Tip de presupuesto al registrar gasto normal
+    const nowDate = new Date()
+    const matchingBudget = budgets.find((b: any) =>
+      b.mes === nowDate.getMonth() + 1 && b.anio === nowDate.getFullYear() && b.limite_cop > 0
+    )
+    let budgetTip = ''
+    if (matchingBudget) {
+      const projected = (matchingBudget.gastado_cop || 0) + (amount || 0)
+      const pct = Math.round((projected / matchingBudget.limite_cop) * 100)
+      if (pct >= 90) budgetTip = ` ⚠️ Con esto llevas el ${pct}% de tu presupuesto de ${matchingBudget.categoria} este mes — casi al tope pana.`
+      else if (pct >= 80) budgetTip = ` Llevas el ${pct}% del presupuesto de ${matchingBudget.categoria} este mes.`
+    }
+
+    // Tip de meta si el gasto es significativo
+    const activeMeta = metas[0]
+    let metaTip = ''
+    if (activeMeta && amount && amount >= 50000) {
+      const savingsNeeded = (activeMeta.monto_objetivo || 0) - (activeMeta.monto_actual || 0)
+      if (savingsNeeded > 0) {
+        const timesOver = Math.round(savingsNeeded / amount)
+        if (timesOver > 0 && timesOver <= 50) {
+          metaTip = ` 💡 ${timesOver} gastos así equivalen a tu meta "${activeMeta.nombre}".`
+        }
+      }
+    }
+
     return {
       role: 'assistant',
-      content: `Listo, registro ese gasto en ${category} para que lo veas rapido en Presupuesto.\n<action>{"type":"ADD_TRANSACTION","monto":${amount},"tipo":"gasto","descripcion":"${desc}","categoria":"${category}","subcategoria":"${desc}","es_gasto_hormiga":false}</action><action>{"type":"NAVIGATE","page":"home"}</action>`,
+      content: `Listo, registro ese gasto en ${category}.${budgetTip}${metaTip}\n<action>{"type":"ADD_TRANSACTION","monto":${amount},"tipo":"gasto","descripcion":"${desc}","categoria":"${category}","subcategoria":"${desc}","es_gasto_hormiga":false}</action>`,
     }
   }
 
@@ -417,7 +470,7 @@ function localFallback(messages: ChatMessage[], snapshot: FinancialSnapshot = {}
     if (!amount) return { role: 'assistant', content: 'Melo. Decime cuanto ingreso y por que concepto.' }
     return {
       role: 'assistant',
-      content: `Listo, pana. Registro ese ingreso y lo mando al historial.\n<action>{"type":"ADD_TRANSACTION","monto":${amount},"tipo":"ingreso","descripcion":"${desc}","categoria":"ingreso"}</action><action>{"type":"NAVIGATE","page":"historial"}</action>`,
+      content: `Listo, pana. Registro ese ingreso.\n<action>{"type":"ADD_TRANSACTION","monto":${amount},"tipo":"ingreso","descripcion":"${desc}","categoria":"ingreso"}</action>`,
     }
   }
 
@@ -537,13 +590,15 @@ export async function POST(req: NextRequest) {
     // buscamos el precio de referencia en Éxito para que Lukas comente.
     // ==================================================================
     let priceContext = ''
+    let priceResult: { avg_price: number; min_price: number; max_price: number } | null = null
     const latestTextRaw = messages.filter((m) => m.role === 'user').at(-1)?.content || ''
     const isSpendingMention = /gast|pagu[eé]|compr[eé]|compr[oó]|gasté|compré/i.test(latestTextRaw)
     const detectedAmount = parseAmount(latestTextRaw.toLowerCase())
-    
-    // Extraer descripción del producto de la frase
+
+    // Extraer descripción del producto de la frase y limpiar artículos
     const productMatch = latestTextRaw.match(/(?:en|de|por)\s+([\w\sáéíóúñü]+?)(?:\s+por|\s+en|\s*$)/i)
-    const productQuery = productMatch?.[1]?.trim()
+    const rawProductQuery = productMatch?.[1]?.trim()
+    const productQuery = rawProductQuery?.replace(/^(un|una|el|la|los|las|unos|unas)\s+/i, '').trim()
 
     if (isSpendingMention && detectedAmount && productQuery && productQuery.length > 3) {
       try {
@@ -553,6 +608,7 @@ export async function POST(req: NextRequest) {
         });
         const priceJson = await priceRes.json();
         if (priceJson.success && priceJson.avg_price) {
+          priceResult = { avg_price: priceJson.avg_price, min_price: priceJson.min_price, max_price: priceJson.max_price }
           const userPaid = detectedAmount;
           const exitoAvg = priceJson.avg_price;
           const diff = userPaid - exitoAvg;
@@ -595,9 +651,58 @@ CONTEXTO ACTUAL DEL USUARIO:
       return NextResponse.json({
         data: {
           role: 'assistant',
-          content: `Listo, pana. Actualizo tu saldo actual a $${previousAmount.toLocaleString()}.\n<action>{"type":"NAVIGATE","page":"home"}</action>`,
+          content: `Listo, pana. Actualizo tu saldo actual a $${previousAmount.toLocaleString()}.\n<action>{"type":"SET_CURRENT_BALANCE","saldo":${previousAmount}}</action>`,
         },
       })
+    }
+
+    // ── Price comparison intercept ──
+    // Si hay diferencia significativa con Éxito, genera respuesta directa
+    // antes del routing deterministico para que el usuario la vea siempre.
+    if (isSpendingMention && detectedAmount && priceResult?.avg_price && productQuery) {
+      const exitoAvg = priceResult.avg_price
+      const diff = detectedAmount - exitoAvg
+      const diffPct = Math.round(Math.abs(diff) / exitoAvg * 100)
+
+      if (Math.abs(diff) > exitoAvg * 0.15) {
+        const cleanDesc = (productQuery.charAt(0).toUpperCase() + productQuery.slice(1)).trim()
+        const category = classifyExpense(latestText)
+        const isOverpaid = diff > 0
+
+        // Tip basado en metas activas del usuario
+        const activeMeta = metas?.[0]
+        let metaTip = ''
+        if (isOverpaid && activeMeta) {
+          const savingsNeeded = (activeMeta.monto_objetivo || 0) - (activeMeta.monto_actual || 0)
+          if (savingsNeeded > 0 && diff > 0) {
+            const weeksToMeta = Math.ceil(savingsNeeded / diff)
+            metaTip = ` Con la diferencia ahorrada en ${weeksToMeta} semanas llegarías a tu meta "${activeMeta.nombre}".`
+          }
+        }
+
+        // Alerta de presupuesto si aplica
+        const now = new Date()
+        const relevantBudget = (budgets || []).find((b: any) =>
+          b.mes === now.getMonth() + 1 && b.anio === now.getFullYear() && b.limite_cop > 0
+        )
+        let budgetWarn = ''
+        if (relevantBudget) {
+          const projected = (relevantBudget.gastado_cop || 0) + detectedAmount
+          const pct = Math.round((projected / relevantBudget.limite_cop) * 100)
+          if (pct >= 90) budgetWarn = ` ⚠️ Con esto llevas el ${pct}% de tu presupuesto de ${relevantBudget.categoria} este mes.`
+          else if (pct >= 80) budgetWarn = ` Llevas el ${pct}% del presupuesto de ${relevantBudget.categoria}.`
+        }
+
+        let responseText: string
+        if (isOverpaid) {
+          const monthlySavings = diff * 4
+          responseText = `¡Uy pana, te dejaste tumbar! 😬 Pagaste ${formatCOP(detectedAmount)} por "${cleanDesc}" y en Éxito está a ${formatCOP(exitoAvg)} (desde ${formatCOP(priceResult.min_price)}). Pagaste ${diffPct}% más caro, eso son ${formatCOP(diff)} de más.${metaTip}${budgetWarn}\n\n💡 Si compras esto seguido, comprando en Éxito ahorrarías hasta ${formatCOP(monthlySavings)} al mes. La próxima compara primero.\n\nDe todas formas te registro el gasto.\n<action>{"type":"ADD_TRANSACTION","monto":${detectedAmount},"tipo":"gasto","descripcion":"${cleanDesc}","categoria":"${category}","subcategoria":"${cleanDesc}","es_gasto_hormiga":false}</action>`
+        } else {
+          responseText = `¡Buena compra, pana! 🎯 Pagaste ${formatCOP(detectedAmount)} por "${cleanDesc}" y en Éxito está a ${formatCOP(exitoAvg)}. Ahorraste ${formatCOP(Math.abs(diff))} (${diffPct}% más barato que el super). ¡Así se hace! Sigue comprando inteligente.${budgetWarn}\n\nTe registro el gasto.\n<action>{"type":"ADD_TRANSACTION","monto":${detectedAmount},"tipo":"gasto","descripcion":"${cleanDesc}","categoria":"${category}","subcategoria":"${cleanDesc}","es_gasto_hormiga":false}</action>`
+        }
+
+        return NextResponse.json({ data: { role: 'assistant', content: responseText } })
+      }
     }
 
     const deterministicIntent = /saldo|gast|pague|pagué|compre|compré|ingreso|recibi|recibí|llego|llegó|llegaron|me\s+llego|me\s+llegó|me\s+llegaron|me\s+pagaron|pago|n[oó]mina|salario|gan/.test(latestText)
