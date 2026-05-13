@@ -121,13 +121,43 @@ export default function ChatView({
               body: JSON.stringify({
                 categoria: action.categoria,
                 limite_cop: action.limite_cop,
-                mes: now.getMonth() + 1,
-                anio: now.getFullYear(),
+                mes: action.mes ?? now.getMonth() + 1,
+                anio: action.anio ?? now.getFullYear(),
               }),
             });
             onRefreshData?.();
           } catch (e) {
             console.error("Error creating budget:", e);
+          }
+        }
+
+        if (action.type === "CREATE_GROUP") {
+          try {
+            await fetch("/api/groups", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                nombre: action.nombre,
+                tipo: action.tipo || "amigos",
+                invite_email: action.invite_email || "",
+              }),
+            });
+            onRefreshData?.();
+          } catch (e) {
+            console.error("Error creating group:", e);
+          }
+        }
+
+        if (action.type === "SET_GROUP_PERSONAL_BUDGET") {
+          try {
+            await fetch("/api/groups", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ personal_budget: action.monto }),
+            });
+            onRefreshData?.();
+          } catch (e) {
+            console.error("Error setting group budget:", e);
           }
         }
       }

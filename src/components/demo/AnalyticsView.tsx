@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
+import ForceGraph from "./ForceGraph";
 
 interface Transaction {
   id: string;
@@ -22,6 +23,13 @@ interface Budget {
   anio: number;
 }
 
+interface BudgetSummary {
+  total_presupuestado: number;
+  total_gastado: number;
+  porcentaje_total: number;
+  categorias: Budget[];
+}
+
 const CATEGORY_ICONS: Record<string, string> = {
   Fijos: "🏠",
   Salidas: "💸",
@@ -38,16 +46,16 @@ function formatCOP(v: number) {
 
 export default function AnalyticsView() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [budgetSummary, setBudgetSummary] = useState<BudgetSummary | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
       fetch("/api/transactions?limit=10").then((r) => r.json()),
-      fetch("/api/budgets/summary").then((r) => r.json()).catch(() => ({ data: [] })),
+      fetch("/api/budgets/summary").then((r) => r.json()).catch(() => ({ data: null })),
     ]).then(([txJson, budgetJson]) => {
       if (txJson.data) setTransactions(txJson.data);
-      if (budgetJson.data) setBudgets(budgetJson.data);
+      if (budgetJson.data) setBudgetSummary(budgetJson.data);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
@@ -55,12 +63,12 @@ export default function AnalyticsView() {
   const totalGastos = transactions.filter(t => t.tipo === "gasto").reduce((s, t) => s + t.monto, 0);
   const totalIngresos = transactions.filter(t => t.tipo === "ingreso").reduce((s, t) => s + t.monto, 0);
 
-  // Main budget card — use first budget or compute from transactions
-  const mainBudget = budgets[0];
-  const budgetLimit = mainBudget?.limite_cop || Math.max(totalIngresos, 1);
-  const budgetSpent = mainBudget?.gastado_cop ?? totalGastos;
+  // Main budget card — prefer budget summary, fall back to transaction totals
+  const mainCategory = budgetSummary?.categorias?.[0];
+  const budgetLimit = budgetSummary?.total_presupuestado || mainCategory?.limite_cop || Math.max(totalIngresos, 1);
+  const budgetSpent = budgetSummary?.total_gastado ?? mainCategory?.gastado_cop ?? totalGastos;
   const budgetPct = Math.min(100, Math.round((budgetSpent / budgetLimit) * 100));
-  const budgetLabel = mainBudget?.categoria || "Este Mes";
+  const budgetLabel = mainCategory?.categoria || "Este Mes";
 
   const strokePct = 251.2 - (251.2 * budgetPct) / 100;
   const isOverBudget = budgetPct >= 90;
@@ -153,6 +161,22 @@ export default function AnalyticsView() {
           <span className={isOverBudget ? "text-[#F36E53]" : "text-[#D8A93F]"}>{formatCOP(budgetSpent)}</span>
           <span className="text-white/40">de {formatCOP(budgetLimit)}</span>
         </div>
+      </motion.div>
+
+      {/* Grafo de gastos — D3 force-directed */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.35 }}
+        className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl overflow-hidden mb-6"
+      >
+        <div className="px-5 pt-5 pb-2">
+          <h3 className="text-white/70 text-sm font-medium uppercase tracking-widest">
+            Radar de Gastos
+          </h3>
+          <p className="text-white/30 text-[10px] mt-0.5">Toca un nodo para ver detalle · Arrastra para mover</p>
+        </div>
+        <ForceGraph period="month" />
       </motion.div>
 
       {/* Últimos Movimientos — datos reales */}
