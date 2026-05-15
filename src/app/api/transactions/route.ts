@@ -74,12 +74,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
   }
 
-  const visualBranches = ['Fijos', 'Salidas', 'Ahorro', 'Susc.']
-  const isVisualBranch = visualBranches.includes(parsed.data.categoria)
-  const dbCategoria = 'otro'
-  const subcategoria = isVisualBranch
-    ? `${parsed.data.categoria}: ${parsed.data.subcategoria || parsed.data.descripcion || 'Movimiento'}`
-    : (parsed.data.subcategoria || `${parsed.data.categoria}: ${parsed.data.descripcion || 'Movimiento'}`)
+  const validCategories = ['Fijos', 'Salidas', 'Susc.', 'Ahorro', 'Ingresos']
+  const dbCategoria = validCategories.includes(parsed.data.categoria)
+    ? parsed.data.categoria
+    : parsed.data.tipo === 'ingreso' ? 'Ingresos' : 'Salidas'
+  const subcategoria = parsed.data.subcategoria || parsed.data.descripcion || 'Movimiento'
 
   const { data, error } = await adminDB
     .from('transactions')
@@ -106,12 +105,16 @@ export async function POST(req: Request) {
   await adminDB.from('profiles').update({ balance_actual }).eq('id', userId)
 
   // Trigger async FinScore recalculation (fire-and-forget)
+  // NEXT_PUBLIC_APP_URL debe estar configurada en Vercel (ej: https://lukas-app.vercel.app)
   try {
-    const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'
-    fetch(`${baseUrl}/api/profile/recalculate-score`, {
-      method: 'POST',
-      headers: { cookie: req.headers.get('cookie') || '' },
-    }).catch(() => { /* non-blocking */ })
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL
+      || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+    if (appUrl) {
+      fetch(`${appUrl}/api/profile/recalculate-score`, {
+        method: 'POST',
+        headers: { cookie: req.headers.get('cookie') || '' },
+      }).catch(() => { /* non-blocking */ })
+    }
   } catch { /* non-blocking */ }
 
   return NextResponse.json({ data }, { status: 201 })

@@ -131,6 +131,7 @@ export async function addTransaction(tx: Omit<Transaction, 'id' | 'created_at'>)
   try {
     const res = await fetch('/api/transactions', {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(tx)
     })
     const json = await res.json()

@@ -20,7 +20,7 @@ export async function GET(req: Request) {
 
   const { data, error } = await supabase
     .from('presupuestos')
-    .select('categoria, limite_cop, gastado_cop, alerta_80pct_enviada, sobrepasado')
+    .select('categoria, limite_cop, gastado_cop')
     .eq('user_id', user.id)
     .eq('anio', year)
     .eq('mes', month)

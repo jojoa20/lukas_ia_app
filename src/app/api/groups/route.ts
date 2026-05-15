@@ -33,7 +33,7 @@ async function sendInviteEmail(params: { to: string; groupName: string; inviterN
           <h2>Te invitaron a Lukas</h2>
           <p>${params.inviterName} quiere compartir contigo el grupo <strong>${params.groupName}</strong>.</p>
           <p>Entra a Lukas, crea tu cuenta o inicia sesion con este correo para unirte.</p>
-          <p><a href="https://lukas-app.vercel.app/sign-in">Abrir Lukas</a></p>
+          <p><a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://lukas-app.vercel.app'}/sign-in">Abrir Lukas</a></p>
         </div>
       `,
     }),

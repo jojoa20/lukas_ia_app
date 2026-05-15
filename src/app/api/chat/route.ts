@@ -591,14 +591,27 @@ export async function POST(req: NextRequest) {
     const isSpendingMention = /gast|pagu[eé]|compr[eé]|compr[oó]|gasté|compré/i.test(latestTextRaw)
     const detectedAmount = parseAmount(latestTextRaw.toLowerCase())
 
-    // Extraer descripción del producto de la frase y limpiar artículos
-    const productMatch = latestTextRaw.match(/(?:en|de|por)\s+([\w\sáéíóúñü]+?)(?:\s+por|\s+en|\s*$)/i)
-    const rawProductQuery = productMatch?.[1]?.trim()
-    const productQuery = rawProductQuery?.replace(/^(un|una|el|la|los|las|unos|unas)\s+/i, '').trim()
+    // Extraer producto: cubre "gasté en X", "compré X", "pagué el X"
+    // Quita montos numéricos del texto antes de buscar el sustantivo
+    const textForProduct = latestTextRaw
+      .replace(/\$[\d.,]+/g, '')
+      .replace(/\b\d[\d.,]*\s*(millones?|palos?|miles?|mil|k|m(?=\b))?\b/gi, '')
+      .trim()
+    const verbPat = textForProduct.match(
+      /(?:compr[eéoó]|pagu[eéoó]|ped[ií]|encarg[ué]e?)\s+(?:(?:un|una|el|la|unos|unas)\s+)?([\w\sáéíóúñü]{3,20}?)(?=\s+en\b|\s+de\b|\s+por\b|\s*,|\s*$)/i
+    )?.[1]?.trim()
+    const prepPat = textForProduct.match(
+      /\ben\b\s+(?:(?:un|una|el|la|los|las)\s+)?([\w\sáéíóúñü]{3,20}?)(?=\s+por\b|\s+en\b|\s*,|\s*$)/i
+    )?.[1]?.trim()
+    const productQuery = (verbPat ?? prepPat)?.replace(/\s+/g, ' ')
 
-    if (isSpendingMention && detectedAmount && productQuery && productQuery.length > 3) {
+    // Montos < $15.000 son consumo inmediato (tinto, bus, mecato) — su precio
+    // no es comparable contra empaques de supermercado.
+    const skipPriceComparison = !detectedAmount || detectedAmount < 15_000
+
+    if (isSpendingMention && !skipPriceComparison && productQuery && productQuery.length > 3) {
       try {
-        const priceJson = await fetchExitoPrice(productQuery, 6000);
+        const priceJson = await fetchExitoPrice(productQuery, 3500);
         if (priceJson.success && priceJson.avg_price) {
           priceResult = { avg_price: priceJson.avg_price, min_price: priceJson.min_price!, max_price: priceJson.max_price! }
           const userPaid = detectedAmount;
@@ -651,7 +664,7 @@ CONTEXTO ACTUAL DEL USUARIO:
     // ── Price comparison intercept ──
     // Si hay diferencia significativa con Éxito, genera respuesta directa
     // antes del routing deterministico para que el usuario la vea siempre.
-    if (isSpendingMention && detectedAmount && priceResult?.avg_price && productQuery) {
+    if (isSpendingMention && !skipPriceComparison && detectedAmount && priceResult?.avg_price && productQuery) {
       const exitoAvg = priceResult.avg_price
       const diff = detectedAmount - exitoAvg
       const diffPct = Math.round(Math.abs(diff) / exitoAvg * 100)
@@ -729,7 +742,14 @@ CONTEXTO ACTUAL DEL USUARIO:
 
     return NextResponse.json({ data: { role: 'assistant', content: result.response.text() } })
   } catch (error: any) {
-    if (error.status === 401 || error.code === 'invalid_api_key') {
+    // Cualquier error de Gemini (401, timeout, 503, red) → fallback local
+    // para que el chat nunca quede roto desde el lado del usuario.
+    const isGeminiError = error.status === 401
+      || error.code === 'invalid_api_key'
+      || typeof error.status === 'number'
+      || error.message?.includes('fetch')
+      || error.message?.includes('timeout')
+    if (isGeminiError) {
       return NextResponse.json({ data: localFallback(messages) })
     }
     return NextResponse.json({ error: error.message || 'Error procesando el chat' }, { status: 500 })
