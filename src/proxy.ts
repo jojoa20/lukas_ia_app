@@ -1,8 +1,17 @@
-import { clerkMiddleware } from "@clerk/nextjs/server";
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { updateSession } from "@/lib/supabase/middleware";
 import { NextRequest } from "next/server";
 
-export default clerkMiddleware(async (_auth, request: NextRequest) => {
+const isPublicRoute = createRouteMatcher([
+  '/',
+  '/sign-in(.*)',
+  '/sign-up(.*)',
+])
+
+export default clerkMiddleware(async (auth, request: NextRequest) => {
+  if (!isPublicRoute(request)) {
+    await auth.protect()
+  }
   return await updateSession(request);
 });
 
