@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
+import { transactionVisual } from "@/lib/visual-assets";
 
 interface Transaction {
   id: string;
@@ -70,25 +71,38 @@ export default function HistorialView() {
         </div>
       ) : transactions.length > 0 ? (
         <div className="space-y-3">
-          {transactions.map(tx => (
+          {transactions.map(tx => {
+            const visual = transactionVisual(tx.descripcion, tx.categoria, tx.tipo, tx.es_gasto_hormiga);
+            return (
             <motion.div
               key={tx.id}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-white/5 p-4 rounded-2xl flex justify-between items-center border border-white/5"
+              className="bg-white/5 p-3 rounded-2xl flex justify-between items-center border border-white/5"
             >
               <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl font-bold ${
-                  tx.tipo === 'ingreso' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-                }`}>
-                  {tx.tipo === 'ingreso' ? '+' : '-'}
+                <div className="relative w-14 h-14 rounded-2xl overflow-hidden border border-white/10 flex-shrink-0 bg-white/5">
+                  <img
+                    src={visual.src}
+                    alt={visual.alt}
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                  <span className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full flex items-center justify-center text-sm font-black border border-[#111827] ${
+                    tx.tipo === 'ingreso' ? 'bg-green-500 text-black' : 'bg-[#111827] text-[#F36E53]'
+                  }`}>
+                    {tx.tipo === 'ingreso' ? '+' : '-'}
+                  </span>
                 </div>
-                <div>
-                  <h4 className="font-bold text-sm text-white">{tx.descripcion || tx.categoria}</h4>
+                <div className="min-w-0">
+                  <h4 className="font-bold text-sm text-white truncate max-w-[160px]">{tx.descripcion || tx.categoria}</h4>
                   <p className="text-[10px] opacity-40 uppercase tracking-wider">
                     {tx.fecha_transaccion
                       ? new Date(tx.fecha_transaccion).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })
                       : 'Sin fecha'}
+                  </p>
+                  <p className={`text-[10px] uppercase tracking-wider font-bold mt-1 ${visual.accent}`}>
+                    {visual.label}
                   </p>
                 </div>
               </div>
@@ -101,7 +115,8 @@ export default function HistorialView() {
                 )}
               </div>
             </motion.div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="text-center py-20 bg-white/5 rounded-3xl border border-dashed border-white/10">

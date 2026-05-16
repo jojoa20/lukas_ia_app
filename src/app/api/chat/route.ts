@@ -3,7 +3,11 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureProfile, getLukasUser } from '@/lib/lukas-user'
 import { LUKAS_AI_ACTION_GUIDE } from '@/lib/lukas-ai-system'
-import { fetchExitoPrice } from '@/lib/prices'
+import { analyzeSpendingText, extractMarketSymbol, wantsMarketLookup, wantsWebResearch } from '@/lib/agent-skills'
+import { logAgentEvent } from '@/lib/agent-observability'
+import { fetchYahooQuote } from '@/lib/market-data'
+import { fetchExitoBasket, fetchExitoPrice } from '@/lib/prices'
+import { braveWebSearch } from '@/lib/web-research'
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'dummy_key_for_build')
 
@@ -23,6 +27,15 @@ type FinancialSnapshot = {
 
 function formatCOP(value: number | null | undefined) {
   return `$${Math.round(Number(value || 0)).toLocaleString('es-CO')} COP`
+}
+
+function formatNumber(value: number | null | undefined, digits = 2) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return 'N/D'
+  return Number(value).toLocaleString('es-CO', { maximumFractionDigits: digits })
+}
+
+function safeActionText(value: string) {
+  return value.replace(/"/g, '\\"').replace(/\n/g, ' ').trim()
 }
 
 const menuHelp: Record<string, string> = {
@@ -605,13 +618,18 @@ export async function POST(req: NextRequest) {
     )?.[1]?.trim()
     const productQuery = (verbPat ?? prepPat)?.replace(/\s+/g, ' ')
 
-    // Montos < $15.000 son consumo inmediato (tinto, bus, mecato) — su precio
-    // no es comparable contra empaques de supermercado.
+    const spendingAnalysis = isSpendingMention
+      ? analyzeSpendingText(latestTextRaw)
+      : { kind: 'none' as const, productQuery: null, basketItems: [], reason: 'No es gasto.' }
+    const comparableProductQuery = spendingAnalysis.productQuery || productQuery
+
+    // Montos < $15.000 son consumo inmediato (tinto, bus, mecato) y no siempre
+    // son comparables contra empaques de supermercado.
     const skipPriceComparison = !detectedAmount || detectedAmount < 15_000
 
-    if (isSpendingMention && !skipPriceComparison && productQuery && productQuery.length > 3) {
+    if (isSpendingMention && !skipPriceComparison && spendingAnalysis.kind === 'single_product' && comparableProductQuery && comparableProductQuery.length > 3) {
       try {
-        const priceJson = await fetchExitoPrice(productQuery, 3500);
+        const priceJson = await fetchExitoPrice(comparableProductQuery, 6000);
         if (priceJson.success && priceJson.avg_price) {
           priceResult = { avg_price: priceJson.avg_price, min_price: priceJson.min_price!, max_price: priceJson.max_price! }
           const userPaid = detectedAmount;
@@ -623,7 +641,7 @@ export async function POST(req: NextRequest) {
             : diff < -exitoAvg * 0.15
             ? `BARATO: el usuario pagó ${diffPct}% más barato que el promedio de Éxito`
             : 'PRECIO JUSTO: el precio pagado está dentro del rango normal de Éxito';
-          priceContext = `\n- COMPARACIÓN DE PRECIO para "${productQuery}": el usuario pagó $${userPaid.toLocaleString()} COP. En Éxito el precio promedio es $${exitoAvg.toLocaleString()} COP (rango: $${priceJson.min_price?.toLocaleString()} - $${priceJson.max_price?.toLocaleString()}). VEREDICTO: ${verdict}. USA ESTA INFO para comentar si fue una buena compra o no y si debe registrar el gasto.`
+          priceContext = `\n- COMPARACIÓN DE PRECIO para "${comparableProductQuery}": el usuario pagó $${userPaid.toLocaleString()} COP. En Éxito el precio promedio es $${exitoAvg.toLocaleString()} COP (rango: $${priceJson.min_price?.toLocaleString()} - $${priceJson.max_price?.toLocaleString()}). VEREDICTO: ${verdict}. USA ESTA INFO para comentar si fue una buena compra o no y si debe registrar el gasto.`
         }
       } catch {
         // No bloquear si Éxito no responde
@@ -664,7 +682,52 @@ CONTEXTO ACTUAL DEL USUARIO:
     // ── Price comparison intercept ──
     // Si hay diferencia significativa con Éxito, genera respuesta directa
     // antes del routing deterministico para que el usuario la vea siempre.
-    if (isSpendingMention && !skipPriceComparison && detectedAmount && priceResult?.avg_price && productQuery) {
+    if (isSpendingMention && detectedAmount && spendingAnalysis.kind === 'generic' && comparableProductQuery) {
+      const cleanDesc = safeActionText(comparableProductQuery.charAt(0).toUpperCase() + comparableProductQuery.slice(1))
+      const category = classifyExpense(latestText)
+      logAgentEvent({
+        event: 'chat_price_comparison_skipped_generic_category',
+        userId,
+        message: latestTextRaw,
+        metadata: { productQuery: comparableProductQuery, amount: detectedAmount, reason: spendingAnalysis.reason },
+      })
+
+      return NextResponse.json({
+        data: {
+          role: 'assistant',
+          content: `Listo, te registro ${formatCOP(detectedAmount)} en "${cleanDesc}".\n\nPara compararte eso bien no me alcanza con "mercado", porque puede ser verduras, proteina, aseo o una compra grande. Si me dices 3-5 productos y cantidades, te calculo una referencia mas justa y te digo donde podrias ahorrar.\n<action>{"type":"ADD_TRANSACTION","monto":${detectedAmount},"tipo":"gasto","descripcion":"${cleanDesc}","categoria":"${category}","subcategoria":"${cleanDesc}","es_gasto_hormiga":false}</action>`,
+        },
+      })
+    }
+
+    if (isSpendingMention && detectedAmount && spendingAnalysis.kind === 'basket' && spendingAnalysis.basketItems.length > 1) {
+      const basket = await fetchExitoBasket(spendingAnalysis.basketItems, 5000)
+      const cleanDesc = safeActionText(spendingAnalysis.basketItems.join(', '))
+      const category = classifyExpense(latestText)
+      const pricedLines = basket.items
+        .filter((item) => item.avg_price)
+        .map((item) => `- ${item.query}: aprox. ${formatCOP(item.avg_price)}${item.min_price ? ` (desde ${formatCOP(item.min_price)})` : ''}`)
+        .join('\n')
+      const reference = basket.success && basket.estimated_total
+        ? `Con precios unitarios de Exito, esos productos dan una referencia de ${formatCOP(basket.estimated_total)} sin contar cantidades exactas.\n${pricedLines}\n\nSi me pasas cantidades, te digo si esos ${formatCOP(detectedAmount)} estuvieron caros, normales o baratos.`
+        : 'No encontre suficientes precios confiables para esa canasta. Si me das marcas o cantidades, lo intento mas fino.'
+
+      logAgentEvent({
+        event: 'chat_basket_price_reference',
+        userId,
+        message: latestTextRaw,
+        metadata: { amount: detectedAmount, items: spendingAnalysis.basketItems, estimatedTotal: basket.estimated_total },
+      })
+
+      return NextResponse.json({
+        data: {
+          role: 'assistant',
+          content: `Te registro el gasto de ${formatCOP(detectedAmount)}.\n\n${reference}\n<action>{"type":"ADD_TRANSACTION","monto":${detectedAmount},"tipo":"gasto","descripcion":"${cleanDesc}","categoria":"${category}","subcategoria":"${cleanDesc}","es_gasto_hormiga":false}</action>`,
+        },
+      })
+    }
+
+    if (isSpendingMention && !skipPriceComparison && detectedAmount && priceResult?.avg_price && comparableProductQuery) {
       const exitoAvg = priceResult.avg_price
       const diff = detectedAmount - exitoAvg
       const diffPct = Math.round(Math.abs(diff) / exitoAvg * 100)
@@ -672,7 +735,7 @@ CONTEXTO ACTUAL DEL USUARIO:
       // Sanity check: if user paid < 10% or > 20x the Éxito avg, categories likely mismatch
       const ratioOk = detectedAmount >= exitoAvg * 0.1 && detectedAmount <= exitoAvg * 20;
       if (Math.abs(diff) > exitoAvg * 0.15 && ratioOk) {
-        const cleanDesc = (productQuery.charAt(0).toUpperCase() + productQuery.slice(1)).trim()
+        const cleanDesc = (comparableProductQuery.charAt(0).toUpperCase() + comparableProductQuery.slice(1)).trim()
         const category = classifyExpense(latestText)
         const isOverpaid = diff > 0
 
@@ -716,6 +779,66 @@ CONTEXTO ACTUAL DEL USUARIO:
       || previousAssistant.includes('se borrara el saldo anterior')
       || previousAssistant.includes('crear el grupo me falta')
       || /grupo|grupos|historico|histórico|comparar|comparativo/.test(latestText)
+
+    if (!isSpendingMention && wantsMarketLookup(latestTextRaw)) {
+      const symbol = extractMarketSymbol(latestTextRaw)
+      if (symbol) {
+        const quote = await fetchYahooQuote(symbol)
+        logAgentEvent({
+          event: 'chat_market_lookup_used',
+          userId,
+          message: latestTextRaw,
+          metadata: { symbol, success: quote.success },
+        })
+
+        if (quote.success) {
+          const sign = Number(quote.change || 0) >= 0 ? '+' : ''
+          return NextResponse.json({
+            data: {
+              role: 'assistant',
+              content: `${quote.symbol} esta en ${formatNumber(quote.price)} ${quote.currency || ''}. Cambio del dia: ${sign}${formatNumber(quote.change)} (${sign}${formatNumber(quote.changePercent)}%).\n\nDato de Yahoo Finance, actualizado: ${quote.timestamp ? new Date(quote.timestamp).toLocaleString('es-CO') : 'sin hora exacta'}. Esto es informacion, no recomendacion de inversion.`,
+            },
+          })
+        }
+
+        return NextResponse.json({
+          data: {
+            role: 'assistant',
+            content: `No pude consultar ${symbol} en Yahoo Finance ahora mismo. ${quote.message || 'Intenta de nuevo en un momento.'}`,
+          },
+        })
+      }
+    }
+
+    if (!isSpendingMention && wantsWebResearch(latestTextRaw)) {
+      const research = await braveWebSearch(`${latestTextRaw} Colombia finanzas consumo`, 4)
+      logAgentEvent({
+        event: 'chat_web_search_used',
+        userId,
+        message: latestTextRaw,
+        metadata: { query: research.query, success: research.success, count: research.results.length },
+      })
+
+      if (research.success) {
+        const bullets = research.results
+          .slice(0, 3)
+          .map((result) => `- ${result.title}: ${result.description} (${result.url})`)
+          .join('\n')
+        return NextResponse.json({
+          data: {
+            role: 'assistant',
+            content: `Busque informacion reciente y esto encontre:\n${bullets}\n\nCon eso, mi lectura rapida: si la pregunta afecta una compra o inversion, revisa precio final, fecha y fuente antes de decidir.`,
+          },
+        })
+      }
+
+      return NextResponse.json({
+        data: {
+          role: 'assistant',
+          content: `Puedo investigar eso con Brave Search, pero ahora no esta disponible: ${research.message || 'sin resultados'}. Si quieres, igual puedo darte una orientacion general con lo que ya se de tus finanzas.`,
+        },
+      })
+    }
 
     if (deterministicIntent) {
       return NextResponse.json({ data: localFallback(messages, { profile, recentTx: recentTx || [], metas: metas || [], budgets: budgets || [], groupNames, trends: activeTrends || [] }) })

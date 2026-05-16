@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
+import { goalVisual } from "@/lib/visual-assets";
 
 interface Meta {
   id: string;
@@ -138,35 +139,50 @@ export default function MetasView() {
           {metas.map(meta => {
             const pct = meta.porcentaje_completado
               || Math.min(100, Math.round((meta.monto_actual / meta.monto_objetivo) * 100));
+            const visual = goalVisual(meta.nombre);
             return (
-              <div key={meta.id} className="bg-white/5 p-5 rounded-2xl border border-white/10">
-                <div className="flex justify-between items-start mb-2">
-                  <h3 className="text-lg font-bold text-white">{meta.nombre}</h3>
-                  {meta.prioridad && (
-                    <span className={`text-xs font-bold uppercase ${prioColor(meta.prioridad)}`}>
-                      {prioLabel(meta.prioridad)}
-                    </span>
+              <div key={meta.id} className="bg-white/5 rounded-2xl border border-white/10 overflow-hidden">
+                <div className="relative h-28 bg-white/5">
+                  <img
+                    src={visual.src}
+                    alt={visual.alt}
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#0B1020] via-transparent to-transparent" />
+                  <span className={`absolute left-4 bottom-3 text-[10px] uppercase tracking-wider font-black ${visual.accent}`}>
+                    {visual.label}
+                  </span>
+                </div>
+                <div className="p-5">
+                  <div className="flex justify-between items-start mb-3 gap-3">
+                    <h3 className="text-lg font-bold text-white leading-tight">{meta.nombre}</h3>
+                    {meta.prioridad && (
+                      <span className={`text-xs font-bold uppercase ${prioColor(meta.prioridad)} flex-shrink-0`}>
+                        {prioLabel(meta.prioridad)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="h-2 w-full bg-black rounded-full overflow-hidden">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${pct}%` }}
+                      transition={{ duration: 1, ease: 'easeOut' }}
+                      className="h-full bg-[#D8A93F] rounded-full"
+                    />
+                  </div>
+                  <div className="flex justify-between items-center mt-2">
+                    <p className="text-xs opacity-50">
+                      ${Math.round(meta.monto_actual / 1000)}k / ${Math.round(meta.monto_objetivo / 1000)}k COP
+                    </p>
+                    <p className="text-xs text-[#D8A93F] font-bold">{pct}%</p>
+                  </div>
+                  {meta.fecha_objetivo && (
+                    <p className="text-[10px] opacity-30 mt-1">
+                      Fecha objetivo: {new Date(meta.fecha_objetivo).toLocaleDateString('es-CO')}
+                    </p>
                   )}
                 </div>
-                <div className="h-2 w-full bg-black rounded-full overflow-hidden">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${pct}%` }}
-                    transition={{ duration: 1, ease: 'easeOut' }}
-                    className="h-full bg-[#D8A93F] rounded-full"
-                  />
-                </div>
-                <div className="flex justify-between items-center mt-2">
-                  <p className="text-xs opacity-50">
-                    ${Math.round(meta.monto_actual / 1000)}k / ${Math.round(meta.monto_objetivo / 1000)}k COP
-                  </p>
-                  <p className="text-xs text-[#D8A93F] font-bold">{pct}%</p>
-                </div>
-                {meta.fecha_objetivo && (
-                  <p className="text-[10px] opacity-30 mt-1">
-                    Fecha objetivo: {new Date(meta.fecha_objetivo).toLocaleDateString('es-CO')}
-                  </p>
-                )}
               </div>
             );
           })}

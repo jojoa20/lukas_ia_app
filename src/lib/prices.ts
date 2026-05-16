@@ -27,6 +27,20 @@ export interface PriceResult {
   message?: string;
 }
 
+export interface BasketPriceResult {
+  success: boolean;
+  source: string;
+  items: {
+    query: string;
+    avg_price: number | null;
+    min_price: number | null;
+    max_price: number | null;
+    count: number;
+  }[];
+  estimated_total: number | null;
+  message?: string;
+}
+
 function extractBestPrice(product: VTEXProduct): number | null {
   const items = product.items || [];
   for (const item of items) {
@@ -95,7 +109,7 @@ export async function fetchExitoPrice(query: string, timeoutMs = 8000): Promise<
   const queryWords = query
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .split(/\s+/)
     .filter((w) => w.length > 2);
 
@@ -103,7 +117,7 @@ export async function fetchExitoPrice(query: string, timeoutMs = 8000): Promise<
     const name = (p.productName || '')
       .toLowerCase()
       .normalize('NFD')
-      .replace(/[̀-ͯ]/g, '');
+      .replace(/[\u0300-\u036f]/g, '');
     return queryWords.length === 0 || queryWords.some((w) => name.includes(w));
   });
 
@@ -139,5 +153,44 @@ export async function fetchExitoPrice(query: string, timeoutMs = 8000): Promise<
     min_price: min,
     max_price: max,
     products: finalData.slice(0, 5),
+  };
+}
+
+export async function fetchExitoBasket(items: string[], timeoutMs = 6000): Promise<BasketPriceResult> {
+  const uniqueItems = Array.from(new Set(items.map((item) => item.trim()).filter(Boolean))).slice(0, 6);
+  const results = await Promise.all(uniqueItems.map(async (item) => {
+    try {
+      const result = await fetchExitoPrice(item, timeoutMs);
+      return {
+        query: item,
+        avg_price: result.avg_price,
+        min_price: result.min_price,
+        max_price: result.max_price,
+        count: result.count,
+      };
+    } catch {
+      return {
+        query: item,
+        avg_price: null,
+        min_price: null,
+        max_price: null,
+        count: 0,
+      };
+    }
+  }));
+
+  const priced = results.filter((item) => item.avg_price && item.avg_price > 0);
+  const estimatedTotal = priced.length
+    ? Math.round(priced.reduce((sum, item) => sum + Number(item.avg_price), 0))
+    : null;
+
+  return {
+    success: priced.length > 0,
+    source: 'Éxito Colombia (VTEX API)',
+    items: results,
+    estimated_total: estimatedTotal,
+    message: priced.length
+      ? 'Estimacion por producto individual; pide cantidades para comparar una canasta real.'
+      : 'No se encontraron precios suficientes para la canasta.',
   };
 }
