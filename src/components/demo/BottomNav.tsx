@@ -91,7 +91,7 @@ export default function BottomNav({ activeTab, onChangeTab }: BottomNavProps) {
             <div className={`mb-1 transition-transform duration-300 ${isActive ? "scale-110 drop-shadow-[0_0_8px_rgba(216,169,63,0.8)]" : ""}`}>
               {tab.icon}
             </div>
-            <span className={`text-[8px] sm:text-[9px] font-bold tracking-wider uppercase ${isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100 transition-opacity"}`}>
+            <span className={`text-[8px] sm:text-[9px] font-bold tracking-wider uppercase transition-opacity ${isActive ? "opacity-100" : "opacity-40"}`}>
               {tab.label}
             </span>
             

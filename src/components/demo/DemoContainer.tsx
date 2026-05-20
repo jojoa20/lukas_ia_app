@@ -42,8 +42,8 @@ export default function DemoContainer() {
     <div className="flex flex-col h-full w-full relative">
       {showSplash && <SplashScreen onFinishLoading={() => setShowSplash(false)} />}
 
-      {/* Scrollable Content Area */}
-      <div className="flex-1 overflow-y-auto no-scrollbar pb-24 relative z-10">
+      {/* Scrollable Content Area — chat manages its own scroll internally */}
+      <div className={`flex-1 relative z-10 ${activeTab === 'chat' ? 'overflow-hidden' : 'overflow-y-auto no-scrollbar pb-24'}`}>
         <AnimatePresence mode="wait">
           {activeTab === "home" && (
             <HomeView key={`home-${refreshKey}`} onOpenAlert={() => {}} />

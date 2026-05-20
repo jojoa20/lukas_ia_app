@@ -379,8 +379,9 @@ export default function ChatView({
   };
 
   return (
-    <div className="flex flex-col h-full p-4 pb-32">
-      <div className="flex items-center justify-between mb-5">
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="flex-shrink-0 flex items-center justify-between px-4 pt-4 pb-2">
         <h1 className="text-2xl font-bold text-[#D8A93F]">Habla con Lukas</h1>
         {messages.length > 0 && (
           <button
@@ -392,7 +393,8 @@ export default function ChatView({
         )}
       </div>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-4 mb-4 no-scrollbar">
+      {/* Messages — scrolls internally */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto no-scrollbar px-4 pb-2 space-y-4">
         {messages.length === 0 && !isLoading && (
           <div className="flex justify-start">
             <div className="max-w-[85%] p-4 rounded-2xl bg-white/10 text-white rounded-tl-none border border-white/10">
@@ -410,6 +412,12 @@ export default function ChatView({
                     {tip}
                   </button>
                 ))}
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="text-[11px] bg-[#D8A93F]/10 border border-[#D8A93F]/30 text-[#D8A93F] px-3 py-1.5 rounded-full hover:bg-[#D8A93F]/20 transition"
+                >
+                  📷 Subir comprobante
+                </button>
               </div>
             </div>
           </div>
@@ -476,18 +484,19 @@ export default function ChatView({
         )}
       </div>
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*,image/heic,application/pdf"
-        className="hidden"
-        onChange={handleImageSelect}
-      />
-
-      <form
-        onSubmit={handleSubmit}
-        className="flex gap-2 bg-[#111827] border border-white/10 p-2 rounded-full backdrop-blur-md"
-      >
+      {/* Input — always visible above BottomNav */}
+      <div className="flex-shrink-0 px-4 pt-2 pb-24">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,image/heic,application/pdf"
+          className="hidden"
+          onChange={handleImageSelect}
+        />
+        <form
+          onSubmit={handleSubmit}
+          className="flex gap-2 bg-[#111827] border border-white/10 p-2 rounded-full backdrop-blur-md"
+        >
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
@@ -514,7 +523,8 @@ export default function ChatView({
         >
           →
         </button>
-      </form>
+        </form>
+      </div>
     </div>
   );
 }
