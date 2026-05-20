@@ -3,6 +3,19 @@
 import React, { useEffect, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 
+interface PendingReceipt {
+  monto: number;
+  fecha: string;
+  comercio: string;
+  descripcion: string;
+  tipo: "gasto" | "ingreso";
+  banco: string;
+  referencia: string | null;
+  confianza: number;
+  categoria: string;
+  receipt_url: string | null;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
@@ -44,7 +57,9 @@ export default function ChatView({
 }: ChatViewProps) {
   const [input, setInputState] = React.useState("");
   const [isLoading, setIsLoading] = React.useState(false);
+  const [pendingReceipt, setPendingReceipt] = React.useState<PendingReceipt | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -165,6 +180,145 @@ export default function ChatView({
     [onNavigate, onRefreshData]
   );
 
+  const handleConfirmReceipt = useCallback(async () => {
+    if (!pendingReceipt) return;
+    const receipt = pendingReceipt;
+    setPendingReceipt(null);
+
+    const confirmMsg: ChatMessage = {
+      id: Date.now().toString(),
+      role: "user",
+      content: "Sí, regístralo",
+    };
+    const updatedMessages = [...messages, confirmMsg];
+    onMessagesChange(updatedMessages);
+    setIsLoading(true);
+
+    try {
+      await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          monto: receipt.monto,
+          tipo: receipt.tipo,
+          categoria: receipt.categoria,
+          subcategoria: receipt.comercio,
+          descripcion: receipt.descripcion,
+          metodo_entrada: "ocr_imagen",
+          es_gasto_hormiga: false,
+          fecha_transaccion: receipt.fecha,
+          receipt_url: receipt.receipt_url,
+          confianza_ia: receipt.confianza,
+        }),
+      });
+      onRefreshData?.();
+
+      const okMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: `Listo pana, registré ${receipt.tipo === "gasto" ? "el gasto" : "el ingreso"} de $${receipt.monto.toLocaleString("es-CO")} en ${receipt.comercio}. ✅`,
+      };
+      onMessagesChange([...updatedMessages, okMsg]);
+    } catch {
+      const errMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: "Hubo un error guardando el movimiento. Intenta de nuevo.",
+      };
+      onMessagesChange([...updatedMessages, errMsg]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [pendingReceipt, messages, onMessagesChange, onRefreshData]);
+
+  const handleRejectReceipt = useCallback(() => {
+    setPendingReceipt(null);
+    const rejectMsg: ChatMessage = {
+      id: Date.now().toString(),
+      role: "assistant",
+      content: "Okey pana, lo cancelo. Si quieres registrarlo manualmente dime el monto y el gasto.",
+    };
+    onMessagesChange([...messages, rejectMsg]);
+  }, [pendingReceipt, messages, onMessagesChange]);
+
+  const handleImageSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (fileInputRef.current) fileInputRef.current.value = "";
+
+    const MAX_MB = 10;
+    if (file.size > MAX_MB * 1024 * 1024) {
+      onMessagesChange([...messages, {
+        id: Date.now().toString(),
+        role: "assistant",
+        content: "La imagen es muy pesada (máx. 10 MB). Intenta con una captura de pantalla más pequeña.",
+      }]);
+      return;
+    }
+
+    const userMsg: ChatMessage = {
+      id: Date.now().toString(),
+      role: "user",
+      content: `📎 Comprobante adjunto (${file.name})`,
+    };
+    const withUser = [...messages, userMsg];
+    onMessagesChange(withUser);
+    setIsLoading(true);
+
+    try {
+      const buffer = await file.arrayBuffer();
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+
+      const res = await fetch("/api/receipts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageBase64: base64, mimeType: file.type }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok || json.error) {
+        const errMsg: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: json.error === "No es un comprobante de pago"
+            ? "Hmm pana, eso no parece un comprobante de pago. Manda la foto del recibo de Nequi, Davivienda o la factura."
+            : "No pude leer el comprobante. Asegúrate de que la foto esté nítida y bien iluminada.",
+        };
+        onMessagesChange([...withUser, errMsg]);
+        return;
+      }
+
+      const d = json.data;
+      const confianzaTag = d.confianza >= 90 ? "" : ` _(confianza ${d.confianza}%)_`;
+      const lukasMsgContent =
+        `📄 Encontré esto en tu comprobante${d.banco ? ` de ${d.banco}` : ""}:${confianzaTag}\n\n` +
+        `💰 Monto: $${d.monto.toLocaleString("es-CO")}\n` +
+        `📅 Fecha: ${d.fecha}\n` +
+        `🏪 Comercio: ${d.comercio}\n` +
+        `📝 ${d.descripcion}\n` +
+        (d.referencia ? `🔖 Ref: ${d.referencia}\n` : "") +
+        `\n¿Lo registro en tus ${d.tipo === "gasto" ? "gastos" : "ingresos"} como ${d.categoria}?`;
+
+      const assistantMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: lukasMsgContent,
+      };
+      onMessagesChange([...withUser, assistantMsg]);
+      setPendingReceipt(d);
+    } catch {
+      const errMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: "Error leyendo el comprobante. Verifica tu conexión e intenta de nuevo.",
+      };
+      onMessagesChange([...withUser, errMsg]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [messages, onMessagesChange]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
@@ -280,6 +434,29 @@ export default function ChatView({
           </motion.div>
         ))}
 
+        {pendingReceipt && !isLoading && (
+          <motion.div
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex justify-start"
+          >
+            <div className="flex gap-2 ml-1">
+              <button
+                onClick={handleConfirmReceipt}
+                className="bg-[#D8A93F] text-black text-sm font-semibold px-4 py-2 rounded-full hover:opacity-90 transition"
+              >
+                ✅ Sí, regístralo
+              </button>
+              <button
+                onClick={handleRejectReceipt}
+                className="bg-white/10 text-white text-sm px-4 py-2 rounded-full border border-white/10 hover:bg-white/20 transition"
+              >
+                ❌ No
+              </button>
+            </div>
+          </motion.div>
+        )}
+
         {isLoading && (
           <motion.div
             initial={{ opacity: 0, x: -10 }}
@@ -299,21 +476,41 @@ export default function ChatView({
         )}
       </div>
 
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*,image/heic,application/pdf"
+        className="hidden"
+        onChange={handleImageSelect}
+      />
+
       <form
         onSubmit={handleSubmit}
         className="flex gap-2 bg-[#111827] border border-white/10 p-2 rounded-full backdrop-blur-md"
       >
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isLoading}
+          title="Adjuntar comprobante (Nequi, Davivienda, factura)"
+          className="text-white/40 hover:text-[#D8A93F] w-9 h-9 flex items-center justify-center flex-shrink-0 transition-colors disabled:opacity-30"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        </button>
         <input
           value={input}
           onChange={(e) => setInputState(e.target.value)}
-          placeholder="Dime un gasto, crea una meta..."
-          className="flex-1 bg-transparent border-none outline-none text-white px-4 text-sm"
+          placeholder="Dime un gasto o adjunta un comprobante..."
+          className="flex-1 bg-transparent border-none outline-none text-white px-2 text-sm"
           disabled={isLoading}
         />
         <button
           type="submit"
           disabled={isLoading || !input.trim()}
-          className="bg-[#D8A93F] text-black w-10 h-10 rounded-full flex items-center justify-center font-bold disabled:opacity-50 transition-opacity"
+          className="bg-[#D8A93F] text-black w-10 h-10 rounded-full flex items-center justify-center font-bold disabled:opacity-50 transition-opacity flex-shrink-0"
         >
           →
         </button>
