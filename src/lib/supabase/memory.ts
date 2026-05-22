@@ -1,78 +1,53 @@
-import { openai } from '@/lib/openai/assistant';
-import { createClient } from './actions';
+import { GoogleGenerativeAI } from '@google/generative-ai'
+import { createAdminClient } from './admin'
 
-export async function summarizeAndStoreThread(threadId: string) {
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
+
+export async function summarizeAndStoreMemory(
+  userId: string,
+  messages: { role: string; content: string }[]
+) {
+  if (messages.length < 6) return
+
   try {
-    const supabase = await createClient();
-    const messageList = await openai.beta.threads.messages.list(threadId, { limit: 100 });
-    const messages = messageList.data.reverse().map(m => 
-      `${m.role}: ${m.content.map(c => c.type === 'text' ? c.text.value : '[Media]').join(' ')}`
-    ).join('\n');
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-preview-04-17' })
+    const transcript = messages
+      .map((m) => `${m.role}: ${m.content}`)
+      .join('\n')
+      .slice(0, 4000)
 
-    if (!messages) return;
+    const result = await model.generateContent(
+      `Eres un asistente que resume conversaciones financieras de forma muy breve. ` +
+      `Extrae solo: datos del usuario (nombre, ingresos, metas mencionadas), ` +
+      `comportamientos de gasto notables y preferencias. Máximo 3 oraciones en español.\n\n` +
+      `Conversación:\n${transcript}`
+    )
+    const summary = result.response.text().trim()
+    if (!summary) return
 
-    const summaryResponse = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: 'You are an assistant that summarizes financial conversations briefly. Focus on key user entities, goals mentioned, spending behavior, or preferences.' },
-        { role: 'user', content: `Summarize the following conversation:\n\n${messages}` }
-      ],
-      max_tokens: 300,
-    });
-
-    const summary = summaryResponse.choices[0].message?.content;
-    if (!summary) return;
-
-    const embeddingResponse = await openai.embeddings.create({
-      model: 'text-embedding-3-small',
-      input: summary,
-      encoding_format: 'float',
-    });
-
-    const embedding = embeddingResponse.data[0].embedding;
-
-    // TODO Fase 2: reemplazar con auth real
-    const dummyUserId = '00000000-0000-0000-0000-000000000001';
-    
-    await supabase.from('chat_memories').insert({
-      user_id: dummyUserId,
-      summary: summary,
-      embedding: embedding
-    });
-
-    console.log('Thread summarized and stored in pgvector successfully.');
-  } catch (error) {
-    console.error('Failed to summarize and store thread:', error);
+    const adminDB = createAdminClient()
+    await adminDB.from('chat_memories').insert({
+      user_id: userId,
+      summary,
+      thread_id: `lukas-${userId}-${Date.now()}`,
+      metadata: { message_count: messages.length },
+    })
+  } catch (err) {
+    console.error('Error almacenando memoria del chat:', err)
   }
 }
 
-export async function fetchRelevantMemories(userQuery: string, limit: number = 3) {
+export async function getRecentMemories(userId: string): Promise<string[]> {
   try {
-    const supabase = await createClient();
-    const dummyUserId = '00000000-0000-0000-0000-000000000001';
-
-    const queryEmbeddingResponse = await openai.embeddings.create({
-      model: 'text-embedding-3-small',
-      input: userQuery,
-      encoding_format: 'float',
-    });
-    const queryEmbedding = queryEmbeddingResponse.data[0].embedding;
-
-    const { data, error } = await supabase.rpc('match_memories', {
-      query_embedding: queryEmbedding,
-      match_threshold: 0.7,
-      match_count: limit,
-      p_user_id: dummyUserId
-    });
-
-    if (error) {
-       console.error('Error fetching vectors:', error);
-       return [];
-    }
-
-    return (data || []).map((row: any) => row.summary);
-  } catch (error) {
-    console.error('Failed to fetch relevant memories:', error);
-    return [];
+    const adminDB = createAdminClient()
+    const { data } = await adminDB
+      .from('chat_memories')
+      .select('summary')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(3)
+    return (data || []).map((row: any) => row.summary as string)
+  } catch {
+    return []
   }
 }

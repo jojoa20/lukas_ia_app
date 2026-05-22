@@ -8,6 +8,7 @@ import { logAgentEvent } from '@/lib/agent-observability'
 import { fetchYahooQuote } from '@/lib/market-data'
 import { fetchExitoBasket, fetchExitoPrice } from '@/lib/prices'
 import { braveWebSearch } from '@/lib/web-research'
+import { getRecentMemories, summarizeAndStoreMemory } from '@/lib/supabase/memory'
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'dummy_key_for_build')
 
@@ -572,6 +573,7 @@ export async function POST(req: NextRequest) {
         .limit(8),
     ])
     const profile = profileRows?.[0]
+    const recentMemories = await getRecentMemories(userId).catch(() => [] as string[])
 
     // consumer_trends puede no existir en la DB — nunca bloquea el chat
     let activeTrends: any[] | null = null;
@@ -660,6 +662,7 @@ CONTEXTO ACTUAL DEL USUARIO:
 - Presupuestos: ${budgets?.map((b) => `${b.categoria}: $${b.gastado_cop || 0}/$${b.limite_cop} (${b.mes}/${b.anio})`).join(', ') || 'Ninguno'}
 - Grupos: ${groupNames || 'Ninguno'}
 - Tendencias de consumo (Alertas de Hype): ${activeTrends?.map((t: any) => `${t.item_name} (Hype: ${t.hype_score}/100)`).join(', ') || 'Ninguna'}${priceContext}
+${recentMemories.length > 0 ? `\nMEMORIA DE CONVERSACIONES ANTERIORES:\n${recentMemories.map((m, i) => `${i + 1}. ${m}`).join('\n')}` : ''}
 `
 
     const latestText = latestTextRaw.toLowerCase()
@@ -862,8 +865,17 @@ CONTEXTO ACTUAL DEL USUARIO:
     const latestMessage = messages.length > 0 ? messages[messages.length - 1].content : 'Hola'
     
     const result = await chat.sendMessage(latestMessage)
+    const responseText = result.response.text()
 
-    return NextResponse.json({ data: { role: 'assistant', content: result.response.text() } })
+    // Guardar resumen de conversación cada 8+ mensajes (fire & forget)
+    if (messages.length >= 8 && !user.isDemo) {
+      summarizeAndStoreMemory(userId, [
+        ...messages,
+        { role: 'assistant', content: responseText },
+      ]).catch(() => null)
+    }
+
+    return NextResponse.json({ data: { role: 'assistant', content: responseText } })
   } catch (error: any) {
     // Cualquier error de Gemini (401, timeout, 503, red) → fallback local
     // para que el chat nunca quede roto desde el lado del usuario.

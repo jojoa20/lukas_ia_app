@@ -235,13 +235,13 @@ export async function createGroup(args: { nombre: string, tipo?: 'pareja' | 'fam
       const invitedProfile = invitedProfiles?.[0];
 
       if (invitedProfile?.id) {
-        const { error: notificationError } = await adminDB.from('notifications').insert({
+        const { error: notificationError } = await adminDB.from('notificaciones').insert({
           user_id: invitedProfile.id,
-          type: 'group_invite',
-          title: 'Invitacion a grupo',
-          message: `${user.name} te invito al grupo ${group.nombre}.`,
+          tipo: 'group_invite',
+          titulo: 'Invitacion a grupo',
+          mensaje: `${user.name} te invito al grupo ${group.nombre}.`,
           metadata: { group_id: group.id, group_name: group.nombre, invited_by: userId },
-          read: false,
+          leida: false,
         });
         if (notificationError) {
           console.warn("No se pudo guardar notifications:", notificationError.message);
