@@ -107,6 +107,39 @@ def health():
 def metrics():
     return model_meta
 
+INCOME_KEYWORDS    = ['salario', 'nomina', 'nómina', 'quincena', 'sueldo', 'me pagaron',
+                      'pago trabajo', 'ingreso', 'recibí pago', 'cobré', 'paga de']
+SERVICE_KEYWORDS   = ['epm', 'vanti', 'acueducto', 'alcantarillado', 'gas natural',
+                      'electricaribe', 'codensa', 'emcali', 'servicio público', 'factura luz',
+                      'recibo luz', 'recibo agua', 'factura gas']
+ROPA_KEYWORDS      = ['camisa', 'pantalon', 'zapato', 'tenis', 'zapatilla', 'vestido',
+                      'zara', 'h&m', 'studio f', 'pronto', 'calzado', 'blusa', 'chaqueta']
+TRANSFER_KEYWORDS  = ['nequi', 'daviplata', 'bancolombia envié', 'transferencia',
+                      'consignación', 'consignacion']
+DEPORTE_KEYWORDS   = ['gimnasio', 'gym', 'crossfit', 'natacion', 'natación', 'futbol',
+                      'fútbol', 'ciclismo', 'entrenamiento', 'spinning', 'boxeo', 'yoga',
+                      'smartfit', 'bodytech', 'hard rock']
+ALIMENTACION_KEYWORDS = ['mercado', 'supermercado', 'postobón', 'postobon', 'colombiana',
+                         'agua cristal', 'agua manantial', 'jugo', 'bebida', 'gaseosa',
+                         'cerveza', 'aguardiente', 'drogueria viveres', 'tienda']
+VIVIENDA_KEYWORDS  = ['arriendo', 'renta', 'hipoteca', 'administración', 'administracion',
+                      'cuota apartamento', 'cuota casa']
+
+def keyword_override(text: str, ml_cat: str, confidence: float):
+    """Si hay palabras clave muy obvias, corregir la predicción del modelo."""
+    t = text.lower()
+    # Alta certeza — siempre overridear
+    if any(k in t for k in INCOME_KEYWORDS):   return 'ingreso_trabajo', max(confidence, 0.82)
+    if any(k in t for k in TRANSFER_KEYWORDS): return 'transferencia',   max(confidence, 0.78)
+    if any(k in t for k in SERVICE_KEYWORDS):  return 'servicios',       max(confidence, 0.78)
+    if any(k in t for k in VIVIENDA_KEYWORDS): return 'vivienda',        max(confidence, 0.82)
+    if any(k in t for k in DEPORTE_KEYWORDS):  return 'deporte',         max(confidence, 0.75)
+    if any(k in t for k in ROPA_KEYWORDS):     return 'ropa',            max(confidence, 0.72)
+    # Corrección alimentación solo si el modelo NO la detectó bien
+    if ml_cat not in ('alimentacion', 'ingreso_trabajo', 'transferencia'):
+        if any(k in t for k in ALIMENTACION_KEYWORDS): return 'alimentacion', max(confidence, 0.70)
+    return ml_cat, confidence
+
 @app.post("/predict", response_model=PredictResponse)
 def predict(req: PredictRequest):
     if model_cat is None or model_horm is None:
@@ -121,6 +154,9 @@ def predict(req: PredictRequest):
         cat_proba  = model_cat.predict_proba([X])[0]
         cat_class  = model_cat.classes_[cat_proba.argmax()]
         confidence = float(cat_proba.max())
+
+        # Override con reglas de palabras clave de alta certeza
+        cat_class, confidence = keyword_override(req.descripcion, cat_class, confidence)
 
         # Predecir hormiga
         horm_proba  = model_horm.predict_proba([X])[0]

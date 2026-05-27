@@ -3,11 +3,9 @@ import { updateSession } from "@/lib/supabase/middleware";
 import { NextRequest } from "next/server";
 
 const isPublicRoute = createRouteMatcher([
-  '/',
-  '/app(.*)',
-  '/api(.*)',
   '/sign-in(.*)',
   '/sign-up(.*)',
+  '/api(.*)',   // API routes manejan su propia auth con Clerk/Supabase
 ])
 
 export default clerkMiddleware(async (auth, request: NextRequest) => {

@@ -88,8 +88,14 @@ function menuHelpResponse(text: string) {
 function parseAmount(text: string) {
   const normalized = text.toLowerCase()
     .replace(/\$/g, '')
-    .replace(/\./g, '')   // remove thousand separators like 30.000
-    .replace(/,/g, '.')   // convert decimal comma to dot
+    // Normalizar errores de tipeo de unidades (antes de tocar los números)
+    .replace(/miil+/g, 'mil')       // "miil", "miill" → "mil" (sin \b para capturar "30miil")
+    .replace(/\bpesos?\b/gi, '')    // remover "pesos"
+    .replace(/\bcop\b/gi, '')       // remover "COP"
+    // Separadores de miles: "30.000" → "30000" (punto antes de exactamente 3 dígitos)
+    .replace(/(\d)\.(\d{3})(?!\d)/g, '$1$2')
+    // Coma decimal colombiana: "1,5" → "1.5"
+    .replace(/(\d),(\d{1,2})(?!\d)/g, '$1.$2')
 
   // Match pattern: number + optional unit word
   const match = normalized.match(/(\d+(?:\.\d+)?)\s*(millones?|palos?|m(?=\b)|miles?|mil(?=\b)|k(?=\b))?/)
@@ -173,8 +179,9 @@ function classifyExpense(text: string): string {
   if (/gimnasio|gym|deporte|natacion|futbol|ciclismo|crossfit|entrenamiento/.test(t)) return 'deporte'
   // Ahorro
   if (/ahorro|ahorr[eé]|ahorrar|meta de ahorro/.test(t)) return 'ahorro'
-  // Alimentación — lo más común
+  // Alimentación — lo más común (incluye mercado, comida preparada, ingredientes)
   if (/mercado|supermercado|frutas|verduras|carniceria|panaderia|cafe|tinto|almuerzo|desayuno|cena|comida|restaurante|domicilio|rappi|empanada|hamburguesa|pizza|sushi|perro|arepa|bandeja|corrientazo/.test(t)) return 'alimentacion'
+  if (/huevo|huebos|huevos|panal|pollo|carne|pechuga|cerdo|res\b|lomo|chuleta|costilla|salmon|atun|leche|queso|yogur|mantequilla|arroz|papa|yuca|platano|pltano|zanahoria|tomate|cebolla|ajo|frijol|lenteja|arveja|garbanzo|maiz|trigo|harina|azucar|sal\b|aceite|vinagre|pasta|espagueti|pan\b|tortilla|granola|cereal|avena|marranita|chicharron|embutido|salchicha|jamon|chorizo|mortadela|aguacate|mango|banano|naranja|mandarina|manzana|pera|uva|fresa|piña|melon|sandia|limón|limon|cocacola|gaseosa/.test(t)) return 'alimentacion'
   // Entretenimiento
   if (/pelicula|cine|bar|discoteca|rumbear|concierto|evento|plan|salida|viaje|hotel|turismo/.test(t)) return 'entretenimiento'
   // Default
@@ -182,7 +189,14 @@ function classifyExpense(text: string): string {
 }
 
 function extractDescription(text: string) {
-  return text.match(/(?:en|por|para|de)\s+([a-záéíóúñ\s]+)$/i)?.[1]?.trim() || 'Movimiento'
+  // Limpiar typos comunes antes de extraer descripción
+  const cleaned = text
+    .replace(/\bpro\b/gi, 'por')   // "pro" → "por" (typo colombiano)
+    .replace(/miil+/g, 'mil')      // "miil" → "mil"
+    .replace(/\bhuebos?\b/gi, 'huevos') // "huebos" → "huevos"
+  return cleaned.match(/(?:en|por|para|de)\s+([a-záéíóúñ\s]+?)(?:\s+\d|\s+por\b|\s+en\b|$)/i)?.[1]?.trim().replace(/\s+(por|en|de|para)$/i, '')
+    || cleaned.match(/(?:compré?|gasté?|pagué?)\s+(?:un|una|el|la|)?\s*([a-záéíóúñ\s]{3,30}?)(?:\s+por|\s+en|\s*$)/i)?.[1]?.trim()
+    || 'Movimiento'
 }
 
 function isAffirmative(text: string) {
@@ -500,9 +514,12 @@ function localFallback(messages: ChatMessage[], snapshot: FinancialSnapshot = {}
       }
     }
 
+    const comprobanteTip = amount && amount >= 10000
+      ? '\n\n📷 ¿Tienes el ticket o comprobante? Súbelo con el botón de cámara y lo registro automático.'
+      : ''
     return {
       role: 'assistant',
-      content: `Listo, registro ese gasto en ${category}.${budgetTip}${metaTip}\n<action>{"type":"ADD_TRANSACTION","monto":${amount},"tipo":"gasto","descripcion":"${desc}","categoria":"${category}","subcategoria":"${desc}","es_gasto_hormiga":false}</action>`,
+      content: `Listo, registro ese gasto en ${category}.${budgetTip}${metaTip}${comprobanteTip}\n<action>{"type":"ADD_TRANSACTION","monto":${amount},"tipo":"gasto","descripcion":"${desc}","categoria":"${category}","subcategoria":"${desc}","es_gasto_hormiga":false}</action>`,
     }
   }
 
@@ -636,10 +653,12 @@ export async function POST(req: NextRequest) {
     // Quita montos numéricos del texto antes de buscar el sustantivo
     const textForProduct = latestTextRaw
       .replace(/\$[\d.,]+/g, '')
-      .replace(/\b\d[\d.,]*\s*(millones?|palos?|miles?|mil|k|m(?=\b))?\b/gi, '')
+      .replace(/\b\d[\d.,]*\s*(millones?|palos?|miles?|mil|miil+|k|m(?=\b))?\b/gi, '')
+      .replace(/\bmiil+\b/gi, '')  // limpiar typos de unidades que quedaron sueltos
+      .replace(/\bpro\b/gi, 'por') // "pro" como typo de "por"
       .trim()
     const verbPat = textForProduct.match(
-      /(?:compr[eéoó]|pagu[eéoó]|ped[ií]|encarg[ué]e?)\s+(?:(?:un|una|el|la|unos|unas)\s+)?([\w\sáéíóúñü]{3,20}?)(?=\s+en\b|\s+de\b|\s+por\b|\s*,|\s*$)/i
+      /(?:compr[eéoó]|pagu[eéoó]|ped[ií]|encarg[ué]e?)\s+(?:(?:un|una|el|la|unos|unas)\s+)?([\w\sáéíóúñü]{3,40}?)(?=\s+en\b|\s+por\b|\s*,|\s*$)/i
     )?.[1]?.trim()
     const prepPat = textForProduct.match(
       /\ben\b\s+(?:(?:un|una|el|la|los|las)\s+)?([\w\sáéíóúñü]{3,20}?)(?=\s+por\b|\s+en\b|\s*,|\s*$)/i
@@ -649,7 +668,15 @@ export async function POST(req: NextRequest) {
     const spendingAnalysis = isSpendingMention
       ? analyzeSpendingText(latestTextRaw)
       : { kind: 'none' as const, productQuery: null, basketItems: [], reason: 'No es gasto.' }
-    const comparableProductQuery = spendingAnalysis.productQuery || productQuery
+
+    // Limpiar el query del producto de números y typos antes de comparar precios
+    const rawComparableQuery = spendingAnalysis.productQuery || productQuery
+    const comparableProductQuery = rawComparableQuery
+      ?.replace(/\b\d+[\d.,]*\s*(miil+|miles?|mil|k|m(?=\b)|millones?|palos?|pesos?|cop)?\b/gi, '')
+      ?.replace(/\bmiil+\b/gi, '')
+      ?.replace(/\bpro\b/gi, '')  // "pro" como typo de "por"
+      ?.replace(/\s+/g, ' ')
+      ?.trim()
 
     // Montos < $15.000 son consumo inmediato (tinto, bus, mecato) y no siempre
     // son comparables contra empaques de supermercado.
@@ -795,9 +822,9 @@ ${recentMemories.length > 0 ? `\nMEMORIA DE CONVERSACIONES ANTERIORES:\n${recent
         let responseText: string
         if (isOverpaid) {
           const monthlySavings = diff * 4
-          responseText = `¡Uy pana, te dejaste tumbar! 😬 Pagaste ${formatCOP(detectedAmount)} por "${cleanDesc}" y en Éxito está a ${formatCOP(exitoAvg)} (desde ${formatCOP(priceResult.min_price)}). Pagaste ${diffPct}% más caro, eso son ${formatCOP(diff)} de más.${metaTip}${budgetWarn}\n\n💡 Si compras esto seguido, comprando en Éxito ahorrarías hasta ${formatCOP(monthlySavings)} al mes. La próxima compara primero.\n\nDe todas formas te registro el gasto.\n<action>{"type":"ADD_TRANSACTION","monto":${detectedAmount},"tipo":"gasto","descripcion":"${cleanDesc}","categoria":"${category}","subcategoria":"${cleanDesc}","es_gasto_hormiga":false}</action>`
+          responseText = `¡Uy pana, te dejaste tumbar! 😬 Pagaste ${formatCOP(detectedAmount)} por "${cleanDesc}" y en Éxito está a ${formatCOP(exitoAvg)} (desde ${formatCOP(priceResult.min_price)}). Pagaste ${diffPct}% más caro, eso son ${formatCOP(diff)} de más.${metaTip}${budgetWarn}\n\n💡 Si compras esto seguido, comprando en Éxito ahorrarías hasta ${formatCOP(monthlySavings)} al mes. La próxima compara primero.\n\nDe todas formas te registro el gasto.\n📷 Si tienes el ticket, súbelo con la cámara para registrarlo automático.\n<action>{"type":"ADD_TRANSACTION","monto":${detectedAmount},"tipo":"gasto","descripcion":"${cleanDesc}","categoria":"${category}","subcategoria":"${cleanDesc}","es_gasto_hormiga":false}</action>`
         } else {
-          responseText = `¡Buena compra, pana! 🎯 Pagaste ${formatCOP(detectedAmount)} por "${cleanDesc}" y en Éxito está a ${formatCOP(exitoAvg)}. Ahorraste ${formatCOP(Math.abs(diff))} (${diffPct}% más barato que el super). ¡Así se hace! Sigue comprando inteligente.${budgetWarn}\n\nTe registro el gasto.\n<action>{"type":"ADD_TRANSACTION","monto":${detectedAmount},"tipo":"gasto","descripcion":"${cleanDesc}","categoria":"${category}","subcategoria":"${cleanDesc}","es_gasto_hormiga":false}</action>`
+          responseText = `¡Buena compra, pana! 🎯 Pagaste ${formatCOP(detectedAmount)} por "${cleanDesc}" y en Éxito está a ${formatCOP(exitoAvg)}. Ahorraste ${formatCOP(Math.abs(diff))} (${diffPct}% más barato que el super). ¡Así se hace! Sigue comprando inteligente.${budgetWarn}\n\nTe registro el gasto.\n📷 Si tienes el ticket, súbelo con la cámara para registrarlo automático.\n<action>{"type":"ADD_TRANSACTION","monto":${detectedAmount},"tipo":"gasto","descripcion":"${cleanDesc}","categoria":"${category}","subcategoria":"${cleanDesc}","es_gasto_hormiga":false}</action>`
         }
 
         return NextResponse.json({ data: { role: 'assistant', content: responseText } })

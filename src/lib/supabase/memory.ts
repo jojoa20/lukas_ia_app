@@ -10,7 +10,7 @@ export async function summarizeAndStoreMemory(
   if (messages.length < 6) return
 
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-preview-04-17' })
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
     const transcript = messages
       .map((m) => `${m.role}: ${m.content}`)
       .join('\n')
