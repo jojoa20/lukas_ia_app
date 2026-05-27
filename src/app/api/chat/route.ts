@@ -514,7 +514,7 @@ function localFallback(messages: ChatMessage[], snapshot: FinancialSnapshot = {}
       }
     }
 
-    const comprobanteTip = amount && amount >= 10000
+    const comprobanteTip = amount && amount >= 5000
       ? '\n\n📷 ¿Tienes el ticket o comprobante? Súbelo con el botón de cámara y lo registro automático.'
       : ''
     return {
@@ -678,9 +678,10 @@ export async function POST(req: NextRequest) {
       ?.replace(/\s+/g, ' ')
       ?.trim()
 
-    // Montos < $15.000 son consumo inmediato (tinto, bus, mecato) y no siempre
-    // son comparables contra empaques de supermercado.
-    const skipPriceComparison = !detectedAmount || detectedAmount < 15_000
+    // Montos < $3.000 son consumo inmediato (tinto $1.5k, bus $2.95k, mecato)
+    // y no son comparables contra empaques de supermercado.
+    // A partir de $3.000 sí vale la pena comparar (bolsa de leche, gaseosa, pan, etc.)
+    const skipPriceComparison = !detectedAmount || detectedAmount < 3_000
 
     if (isSpendingMention && !skipPriceComparison && spendingAnalysis.kind === 'single_product' && comparableProductQuery && comparableProductQuery.length > 3) {
       try {

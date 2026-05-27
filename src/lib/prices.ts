@@ -123,6 +123,11 @@ const NON_FOOD_KEYWORDS = [
   'cafetera', 'sanduchera', 'waflera', 'air fryer',
   'caja cubeta', 'porta huevos',  // contenedores/accesorios para huevos
   'decorativ', 'decoracion',       // artículos decorativos
+  'jarra',                         // jarras/jarros para leche — no es leche
+  'materna',                       // bolsas de leche materna — no es leche de consumo
+  'almacenamiento',                // bolsas de almacenamiento — no es el alimento
+  'extractor',                     // extractores de leche
+  'biberon', 'chupo',              // accesorios bebé
 ]
 
 function normalizeQuery(q: string): string {
