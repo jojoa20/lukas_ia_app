@@ -9,6 +9,7 @@ import { fetchYahooQuote } from '@/lib/market-data'
 import { fetchExitoBasket, fetchExitoPrice } from '@/lib/prices'
 import { braveWebSearch } from '@/lib/web-research'
 import { getRecentMemories, summarizeAndStoreMemory } from '@/lib/supabase/memory'
+import { classifyExpenseML } from '@/lib/ml-classifier'
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'dummy_key_for_build')
 
@@ -148,11 +149,36 @@ function parseHistoryMonth(text: string) {
   return `${monthsByName[match]} ${new Date().getFullYear()}`
 }
 
-function classifyExpense(text: string) {
-  if (/arriendo|renta|servicio|luz|agua|\bgas\b|internet|mercado|colegio|cuota|prestamo/.test(text)) return 'Fijos'
-  if (/ingreso|nomina|nómina|salario|pago|transferencia|ahorro|meta|inversion|inverti|aporte/.test(text)) return 'Ingresos'
-  if (/netflix|spotify|prime|hbo|disney|suscripcion|mensualidad|app/.test(text)) return 'Susc.'
-  return 'Salidas'
+function classifyExpense(text: string): string {
+  const t = text.toLowerCase()
+  // Ingresos
+  if (/ingreso|nomina|nómina|salario|quincena|sueldo|pago.*trabajo|me.*pagaron/.test(t)) return 'ingreso_trabajo'
+  if (/freelance|venta|ganancia|cobr[eé]|ingreso extra/.test(t)) return 'ingreso_extra'
+  if (/transferencia|nequi|daviplata|bancolombia.*recib/.test(t)) return 'transferencia'
+  // Fijos / Vivienda
+  if (/arriendo|renta|administracion|hipoteca/.test(t)) return 'vivienda'
+  // Fijos / Servicios
+  if (/\bluz\b|agua|gas\b|internet|epm|vanti|acueducto|alcantarillado|tv cable|energia/.test(t)) return 'servicios'
+  // Tecnología / Suscripciones
+  if (/netflix|spotify|prime|hbo|disney|youtube.*premium|icloud|canva|chatgpt|suscripcion|mensualidad/.test(t)) return 'tecnologia'
+  // Transporte
+  if (/uber|didi|taxi|bus|metro|transmilenio|pasaje|mio|sitp|indriver|cabify|beat|gasolina|combustible/.test(t)) return 'transporte'
+  // Salud
+  if (/medico|doctor|farmacia|drogueria|medicina|salud|eps|consulta|examen|laboratorio/.test(t)) return 'salud'
+  // Educación
+  if (/colegio|universidad|clase|curso|libro|matricula|educacion|estudio/.test(t)) return 'educacion'
+  // Ropa
+  if (/ropa|camisa|pantalon|zapatos|vestido|calzado|tenis|zapatilla/.test(t)) return 'ropa'
+  // Deporte
+  if (/gimnasio|gym|deporte|natacion|futbol|ciclismo|crossfit|entrenamiento/.test(t)) return 'deporte'
+  // Ahorro
+  if (/ahorro|ahorr[eé]|ahorrar|meta de ahorro/.test(t)) return 'ahorro'
+  // Alimentación — lo más común
+  if (/mercado|supermercado|frutas|verduras|carniceria|panaderia|cafe|tinto|almuerzo|desayuno|cena|comida|restaurante|domicilio|rappi|empanada|hamburguesa|pizza|sushi|perro|arepa|bandeja|corrientazo/.test(t)) return 'alimentacion'
+  // Entretenimiento
+  if (/pelicula|cine|bar|discoteca|rumbear|concierto|evento|plan|salida|viaje|hotel|turismo/.test(t)) return 'entretenimiento'
+  // Default
+  return 'otro'
 }
 
 function extractDescription(text: string) {
@@ -485,7 +511,7 @@ function localFallback(messages: ChatMessage[], snapshot: FinancialSnapshot = {}
     if (!amount) return { role: 'assistant', content: 'Melo. Decime cuanto ingreso y por que concepto.' }
     return {
       role: 'assistant',
-      content: `Listo, pana. Registro ese ingreso.\n<action>{"type":"ADD_TRANSACTION","monto":${amount},"tipo":"ingreso","descripcion":"${desc}","categoria":"ingreso"}</action>`,
+      content: `Listo, pana. Registro ese ingreso.\n<action>{"type":"ADD_TRANSACTION","monto":${amount},"tipo":"ingreso","descripcion":"${desc}","categoria":"ingreso_trabajo"}</action>`,
     }
   }
 

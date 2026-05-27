@@ -76,11 +76,14 @@ export default function HomeView({ onOpenAlert }: { onOpenAlert?: () => void }) 
   const racha = profile?.racha_actual_dias || 0;
   const balance = profile?.balance_actual || 0;
 
-  // Calculos para el diagrama visual
+  // Calculos para el diagrama visual — mapea categorías DB a grupos de display
+  const FIJOS_CATS = ['vivienda', 'servicios', 'educacion', 'Fijos'];
+  const SALIDAS_CATS = ['alimentacion', 'transporte', 'entretenimiento', 'salud', 'deporte', 'ropa', 'otro', 'Salidas'];
+  const SUSC_CATS = ['tecnologia', 'Susc.'];
   const gastos = transactions.filter(t => t.tipo === 'gasto');
-  const txFijos = gastos.filter(t => t.categoria === 'Fijos' && !t.es_gasto_hormiga).reduce((s, t) => s + t.monto, 0);
-  const txSalidas = gastos.filter(t => t.categoria === 'Salidas' && !t.es_gasto_hormiga).reduce((s, t) => s + t.monto, 0);
-  const txSusc = gastos.filter(t => t.categoria === 'Susc.' && !t.es_gasto_hormiga).reduce((s, t) => s + t.monto, 0);
+  const txFijos = gastos.filter(t => FIJOS_CATS.includes(t.categoria) && !t.es_gasto_hormiga).reduce((s, t) => s + t.monto, 0);
+  const txSalidas = gastos.filter(t => SALIDAS_CATS.includes(t.categoria) && !t.es_gasto_hormiga).reduce((s, t) => s + t.monto, 0);
+  const txSusc = gastos.filter(t => SUSC_CATS.includes(t.categoria) && !t.es_gasto_hormiga).reduce((s, t) => s + t.monto, 0);
   const txHormigas = gastos.filter(t => t.es_gasto_hormiga).reduce((s, t) => s + t.monto, 0);
   const txTotal = Math.max(txFijos + txSalidas + txSusc + txHormigas, 1);
 

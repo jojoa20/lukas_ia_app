@@ -1,0 +1,23 @@
+artifact_path: /home/djojo/projects/lukas-ai/mlruns/1/models/m-c16517b6361b4e63990b6592aee72cdf/artifacts
+flavors:
+  python_function:
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.sklearn
+    model_path: model.pkl
+    predict_fn: predict
+    python_version: 3.12.3
+  sklearn:
+    code: null
+    pickled_model: model.pkl
+    serialization_format: cloudpickle
+    sklearn_version: 1.8.0
+    skops_trusted_types: null
+mlflow_version: 3.12.0
+model_id: m-c16517b6361b4e63990b6592aee72cdf
+model_size_bytes: 33711
+model_uuid: m-c16517b6361b4e63990b6592aee72cdf
+prompts: null
+run_id: 00d7c678446a4f798afbc1af9a926734
+utc_time_created: '2026-05-27 09:49:18.050870'

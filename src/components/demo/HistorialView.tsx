@@ -24,7 +24,7 @@ export default function HistorialView() {
   const [descripcion, setDescripcion] = useState("");
 
   useEffect(() => {
-    fetch('/api/transactions')
+    fetch('/api/transactions?limit=50')
       .then(res => res.json())
       .then(json => {
         if (json.data) setTransactions(json.data);
@@ -166,12 +166,35 @@ export default function HistorialView() {
               value={monto}
               onChange={e => setMonto(e.target.value)}
             />
-            <input
-              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white"
-              placeholder="Categoria (Ej. Comida, Transporte)"
+            <select
+              className="w-full bg-[#1a2a5e] border border-white/10 rounded-xl p-3 text-white"
               value={categoria}
               onChange={e => setCategoria(e.target.value)}
-            />
+            >
+              <option value="">-- Categoría --</option>
+              {tipo === 'ingreso' ? (
+                <>
+                  <option value="ingreso_trabajo">💰 Salario / Nómina</option>
+                  <option value="ingreso_extra">💵 Ingreso Extra</option>
+                  <option value="transferencia">↔️ Transferencia</option>
+                </>
+              ) : (
+                <>
+                  <option value="alimentacion">🍽️ Alimentación</option>
+                  <option value="transporte">🚗 Transporte</option>
+                  <option value="entretenimiento">🎉 Entretenimiento</option>
+                  <option value="salud">💊 Salud</option>
+                  <option value="educacion">📚 Educación</option>
+                  <option value="servicios">⚡ Servicios (luz, agua, gas)</option>
+                  <option value="vivienda">🏠 Vivienda / Arriendo</option>
+                  <option value="ropa">👕 Ropa</option>
+                  <option value="tecnologia">📱 Tecnología / Suscripciones</option>
+                  <option value="deporte">🏋️ Deporte</option>
+                  <option value="ahorro">🏦 Ahorro</option>
+                  <option value="otro">📦 Otro</option>
+                </>
+              )}
+            </select>
             <input
               className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white"
               placeholder="Descripcion opcional"

@@ -29,10 +29,14 @@ Reglas críticas:
 
 function classifyReceiptExpense(comercio: string, descripcion: string): string {
   const text = `${comercio} ${descripcion}`.toLowerCase()
-  if (/netflix|spotify|prime|hbo|disney|claro|tigo|movistar|une|suscripcion|mensualidad/.test(text)) return 'Susc.'
-  if (/arriendo|renta|servicios|luz|agua|gas|internet|epm|acueducto|alcantarillado|cuota|prestamo|credito/.test(text)) return 'Fijos'
-  if (/ingreso|nomina|nómina|salario|transferencia|recibido/.test(text)) return 'Ingresos'
-  return 'Salidas'
+  if (/netflix|spotify|prime|hbo|disney|claro|tigo|movistar|une|suscripcion|mensualidad|app/.test(text)) return 'tecnologia'
+  if (/arriendo|renta|hipoteca/.test(text)) return 'vivienda'
+  if (/\bluz\b|agua|\bgas\b|internet|epm|vanti|acueducto|alcantarillado|energia|tv cable/.test(text)) return 'servicios'
+  if (/farmacia|drogueria|medico|salud|clinica|hospital/.test(text)) return 'salud'
+  if (/uber|taxi|didi|bus|transmilenio|gasolina|combustible/.test(text)) return 'transporte'
+  if (/nomina|nómina|salario|sueldo|quincena/.test(text)) return 'ingreso_trabajo'
+  if (/transferencia|recibido|nequi|daviplata/.test(text)) return 'transferencia'
+  return 'alimentacion'
 }
 
 export async function POST(req: NextRequest) {

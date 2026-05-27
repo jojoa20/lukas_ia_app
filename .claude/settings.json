@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(/home/djojo/projects/city-summa/.venv/bin/pip install *)",
+      "Bash(head -1 /home/djojo/projects/city-summa/.venv/bin/pip && ls -la /home/djojo/projects/city-summa/.venv/bin/python)",
+      "Read(//usr/bin/**)",
+      "Bash(/home/djojo/projects/city-summa/.venv/bin/jupyter nbconvert *)",
+      "Bash(python3 -c ' *)",
+      "Bash(/home/djojo/projects/city-summa/.venv/bin/python figura_tesis.py)"
+    ]
+  }
+}

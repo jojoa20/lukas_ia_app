@@ -1,0 +1,68 @@
+descripcion,monto,categoria,es_gasto_hormiga,tipo
+Mercado,50000,alimentacion,False,gasto
+sueldo,10000000,ingreso_trabajo,False,ingreso
+Empanadas,100000,alimentacion,False,gasto
+litro de leche,100000,alimentacion,False,gasto
+Gaseosa Coca-Cola 1.5L,10000,alimentacion,False,gasto
+Paca de huevos,50000,alimentacion,False,gasto
+uber,30000,transporte,True,gasto
+uber,20000,transporte,True,gasto
+empanada,5000,alimentacion,True,gasto
+gas,345000,servicios,False,gasto
+vanti,235000,servicios,False,gasto
+Pago arriendo,1200000,vivienda,False,gasto
+Pago quincena,3500000,ingreso_trabajo,False,ingreso
+netflix,60000,tecnologia,False,gasto
+psn,50000,entretenimiento,False,gasto
+Chitos y gaseosa,6500,alimentacion,True,gasto
+Cafe con dona,9000,alimentacion,True,gasto
+Pasajes semana,12000,transporte,True,gasto
+Cafe manana,8500,alimentacion,True,gasto
+Papas y gaseosa,15000,alimentacion,True,gasto
+Salchicapapa,5000,alimentacion,False,gasto
+Chocorramo,5000,alimentacion,True,gasto
+Chocorramo,5000,alimentacion,True,gasto
+Chocorramo,5000,alimentacion,True,gasto
+gasolina,50000,transporte,False,gasto
+una suscripcion,5000,tecnologia,False,gasto
+comida chatarra,15000,alimentacion,True,gasto
+empanada,45000,alimentacion,False,gasto
+frutas,10000,alimentacion,False,gasto
+perro caliente,10000,alimentacion,False,gasto
+hamburguesa,10000,alimentacion,False,gasto
+queso,20000,alimentacion,False,gasto
+comida,150000,alimentacion,False,gasto
+una suscripcion spotify,17000,tecnologia,False,gasto
+transporte al trabajo,8000,transporte,True,gasto
+almuerzo ejecutivo,15000,alimentacion,False,gasto
+tinto en la mañana,2000,alimentacion,True,gasto
+tinto,2500,alimentacion,True,gasto
+cafe del trabajo,3000,alimentacion,True,gasto
+mecato en recreo,5000,alimentacion,True,gasto
+Chocorramo 2,5000,alimentacion,True,gasto
+paquete de papas,3500,alimentacion,True,gasto
+salario mes,3000000,ingreso_trabajo,False,ingreso
+quincena trabajo,1500000,ingreso_trabajo,False,ingreso
+pago freelance,500000,ingreso_extra,False,ingreso
+nequi recibido,100000,transferencia,False,ingreso
+arriendo mes,900000,vivienda,False,gasto
+administracion edificio,150000,vivienda,False,gasto
+internet hogar,89000,servicios,False,gasto
+celular plan,65000,tecnologia,False,gasto
+energia electrica,120000,servicios,False,gasto
+agua mes,45000,servicios,False,gasto
+drogueria medicina,35000,salud,False,gasto
+cita medico,80000,salud,False,gasto
+Universidad semestre,3000000,educacion,False,gasto
+libros universidad,150000,educacion,False,gasto
+tenis nike,280000,ropa,False,gasto
+camisa,90000,ropa,False,gasto
+gimnasio mensualidad,120000,deporte,False,gasto
+futbol cancha,30000,deporte,True,gasto
+ahorro para viaje,500000,ahorro,False,gasto
+cuota credito,450000,servicios,False,gasto
+domicilio rappi,35000,alimentacion,True,gasto
+domicilio pizza,45000,alimentacion,True,gasto
+cine entrada,25000,entretenimiento,False,gasto
+bar tragos,80000,entretenimiento,True,gasto
+viaje fin semana,300000,entretenimiento,False,gasto

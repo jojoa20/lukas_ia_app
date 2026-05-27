@@ -26,12 +26,11 @@ export async function addTransaction(args: { monto: number, tipo: 'ingreso' | 'g
     const userId = ensuredProfile?.id || user.id;
 
     const adminDB = createAdminClient();
-    const visualBranches = ['Fijos', 'Salidas', 'Ahorro', 'Susc.'];
-    const isVisualBranch = args.categoria ? visualBranches.includes(args.categoria) : false;
-    const dbCategoria = 'otro';
-    const subcategoria = isVisualBranch
-      ? `${args.categoria}: ${args.subcategoria || args.descripcion}`
-      : (args.subcategoria || `${args.categoria || 'otro'}: ${args.descripcion}`);
+    const DB_VALID_CATEGORIES = ['alimentacion','transporte','entretenimiento','salud','educacion','servicios','vivienda','ropa','tecnologia','deporte','ahorro','ingreso_trabajo','ingreso_extra','transferencia','otro'];
+    const LEGACY_MAP: Record<string, string> = { 'Fijos': 'servicios', 'Salidas': 'alimentacion', 'Susc.': 'tecnologia', 'Ahorro': 'ahorro', 'Ingresos': 'ingreso_trabajo', 'ingreso': 'ingreso_trabajo' };
+    const rawCat = args.categoria || 'otro';
+    const dbCategoria = DB_VALID_CATEGORIES.includes(rawCat) ? rawCat : (LEGACY_MAP[rawCat] ?? (args.tipo === 'ingreso' ? 'ingreso_trabajo' : 'otro'));
+    const subcategoria = args.subcategoria || args.descripcion || 'Movimiento';
     const { data, error } = await adminDB.from('transactions').insert([{
       user_id: userId,
       tipo: args.tipo,

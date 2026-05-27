@@ -1,0 +1,23 @@
+ACCURACY: 0.8474
+F1 MACRO: 0.5939
+F1 WEIGHTED: 0.8557
+CV ACCURACY: 0.8085 ± 0.0334
+
+                 precision    recall  f1-score   support
+
+   alimentacion       0.94      0.85      0.89       831
+        deporte       1.00      1.00      1.00         1
+      educacion       0.33      1.00      0.50         1
+entretenimiento       0.29      1.00      0.44         2
+ingreso_trabajo       0.73      0.92      0.82       117
+           ropa       0.50      1.00      0.67         1
+          salud       0.50      1.00      0.67         1
+      servicios       0.72      0.77      0.74       268
+     tecnologia       0.92      0.96      0.94       105
+  transferencia       0.00      0.00      0.00         0
+     transporte       0.13      1.00      0.24         2
+       vivienda       0.12      1.00      0.22         1
+
+       accuracy                           0.85      1330
+      macro avg       0.52      0.87      0.59      1330
+   weighted avg       0.87      0.85      0.86      1330

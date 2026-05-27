@@ -2,18 +2,26 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureProfile, getLukasUser } from '@/lib/lukas-user'
 
+// Mapea categorías DB a grupos de display para el grafo
+const DISPLAY_GROUPS: Record<string, string> = {
+  vivienda: 'Fijos', servicios: 'Fijos', educacion: 'Fijos',
+  alimentacion: 'Salidas', transporte: 'Salidas', entretenimiento: 'Salidas',
+  salud: 'Salidas', deporte: 'Salidas', ropa: 'Salidas', otro: 'Salidas',
+  tecnologia: 'Susc.', ahorro: 'Ahorro',
+  ingreso_trabajo: 'Ingresos', ingreso_extra: 'Ingresos', transferencia: 'Ingresos',
+}
+
 function normalizeCategory(category?: string, subcategory?: string) {
+  const cat = (category || '').toLowerCase().trim()
+  // DB category → display group
+  if (DISPLAY_GROUPS[cat]) return DISPLAY_GROUPS[cat]
+  // Legacy prefixes (datos históricos)
   const sub = subcategory || ''
   if (sub.startsWith('Fijos:')) return 'Fijos'
   if (sub.startsWith('Salidas:')) return 'Salidas'
   if (sub.startsWith('Ahorro:')) return 'Ahorro'
   if (sub.startsWith('Susc.:')) return 'Susc.'
-  if (sub.startsWith('Hormiga:')) return 'Salidas'
-
-  const value = (category || '').toLowerCase()
-  if (value.includes('fijo') || value.includes('arriendo') || value.includes('servicio') || value.includes('mercado')) return 'Fijos'
-  if (value.includes('ahorro') || value.includes('meta') || value.includes('inversion')) return 'Ahorro'
-  if (value.includes('susc') || value.includes('netflix') || value.includes('spotify') || value.includes('prime')) return 'Susc.'
+  // Fallback
   return 'Salidas'
 }
 

@@ -57,3 +57,13 @@ server.log
 *.tsbuildinfo
 next-env.d.ts
 .env*.local
+
+# ML
+ml/.venv/
+ml/mlflow/
+ml/__pycache__/
+ml/scripts/__pycache__/
+ml/serve/__pycache__/
+mlruns/
+*.pyc
+*.pyo

@@ -31,13 +31,29 @@ interface BudgetSummary {
 }
 
 const CATEGORY_ICONS: Record<string, string> = {
+  // Categorías DB válidas
+  alimentacion: "🍽️",
+  transporte: "🚗",
+  entretenimiento: "🎉",
+  salud: "💊",
+  educacion: "📚",
+  servicios: "⚡",
+  vivienda: "🏠",
+  ropa: "👕",
+  tecnologia: "📱",
+  deporte: "🏋️",
+  ahorro: "🏦",
+  ingreso_trabajo: "💰",
+  ingreso_extra: "💵",
+  transferencia: "↔️",
+  otro: "📦",
+  // Aliases legacy (por compatibilidad)
   Fijos: "🏠",
   Salidas: "💸",
   "Susc.": "📱",
   Ingresos: "💰",
   ingreso: "💰",
   gasto: "💸",
-  otro: "📦",
 };
 
 function formatCOP(v: number) {

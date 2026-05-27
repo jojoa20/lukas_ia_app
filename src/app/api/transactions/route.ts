@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureProfile, getLukasUser } from '@/lib/lukas-user'
+import { classifyExpenseML } from '@/lib/ml-classifier'
 
 const querySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -74,10 +75,31 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
   }
 
-  const validCategories = ['Fijos', 'Salidas', 'Susc.', 'Ahorro', 'Ingresos']
-  const dbCategoria = validCategories.includes(parsed.data.categoria)
-    ? parsed.data.categoria
-    : parsed.data.tipo === 'ingreso' ? 'Ingresos' : 'Salidas'
+  // Normalizar categoría al esquema DB válido
+  const DB_VALID_CATEGORIES = ['alimentacion','transporte','entretenimiento','salud','educacion','servicios','vivienda','ropa','tecnologia','deporte','ahorro','ingreso_trabajo','ingreso_extra','transferencia','otro']
+  const LEGACY_MAP: Record<string, string> = {
+    'Fijos': parsed.data.descripcion?.toLowerCase().match(/arriendo|renta/) ? 'vivienda' : 'servicios',
+    'Salidas': 'alimentacion',
+    'Susc.': 'tecnologia',
+    'Ahorro': 'ahorro',
+    'Ingresos': 'ingreso_trabajo',
+    'ingreso': 'ingreso_trabajo',
+  }
+  const rawCat = parsed.data.categoria
+  let dbCategoria = DB_VALID_CATEGORIES.includes(rawCat)
+    ? rawCat
+    : LEGACY_MAP[rawCat] ?? (parsed.data.tipo === 'ingreso' ? 'ingreso_trabajo' : 'otro')
+
+  // Si la categoría quedó como 'otro' y hay descripción, intentar clasificar con ML
+  if (dbCategoria === 'otro' && parsed.data.descripcion) {
+    try {
+      const ml = await classifyExpenseML(parsed.data.descripcion, parsed.data.monto)
+      if (ml.confidence > 0.65 && ml.categoria !== 'otro') {
+        dbCategoria = ml.categoria
+      }
+    } catch { /* ML no disponible — ok, seguimos con 'otro' */ }
+  }
+
   const subcategoria = parsed.data.subcategoria || parsed.data.descripcion || 'Movimiento'
 
   const { data, error } = await adminDB

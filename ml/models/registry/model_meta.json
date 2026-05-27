@@ -1,0 +1,30 @@
+{
+  "version": "v1.0",
+  "trained_at": "2026-05-27T04:49:24.957308",
+  "dataset_size": 6579,
+  "dataset_expanded": 6646,
+  "cat_accuracy": 0.8473684210526315,
+  "cat_f1_macro": 0.5939275096210783,
+  "cat_f1_weighted": 0.8556792949616456,
+  "cat_cv_mean": 0.8084588446285013,
+  "cat_cv_std": 0.033416461858780264,
+  "hormiga_accuracy": 0.8541353383458646,
+  "hormiga_f1": 0.836424957841484,
+  "quality_gate_passed": true,
+  "categories": [
+    "ahorro",
+    "alimentacion",
+    "deporte",
+    "educacion",
+    "entretenimiento",
+    "ingreso_extra",
+    "ingreso_trabajo",
+    "ropa",
+    "salud",
+    "servicios",
+    "tecnologia",
+    "transferencia",
+    "transporte",
+    "vivienda"
+  ]
+}
